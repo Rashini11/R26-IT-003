@@ -1,0 +1,65 @@
+# -----------------------------
+# Python cache & environments
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# -----------------------------
+# Jupyter Notebook checkpoints
+# -----------------------------
+.ipynb_checkpoints/
+
+# -----------------------------
+# Logs & temp files
+# -----------------------------
+*.log
+*.tmp
+*.temp
+
+# -----------------------------
+# OS files
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# IDE files
+# -----------------------------
+.vscode/
+.idea/
+
+# -----------------------------
+# Dataset / Images (IMPORTANT)
+# -----------------------------
+
+# Ignore ONLY the training images folder
+data/raw/images/train/
+
+# Allow everything else
+!data/processed_sensor.csv
+
+# -----------------------------
+# Model files (usually large)
+# -----------------------------
+*.h5
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# -----------------------------
+# Output folders
+# -----------------------------
+outputs/
+results/
+runs/
+checkpoints/
