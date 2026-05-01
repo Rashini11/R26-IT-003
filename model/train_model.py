@@ -83,21 +83,23 @@ base_model = tf.keras.applications.MobileNetV2(
 )
 
 # 🔥 Fine-tuning
-base_model.trainable = False  # Start with frozen layers
+base_model.trainable = True  # Start with frozen layers
 
 # =========================
-# 🧠 Model
+# 🧠 Functional Model (Grad-CAM Friendly)
 # =========================
-model = models.Sequential([
-    layers.Input(shape=(224, 224, 3)),
-    data_augmentation,
-    base_model,
-    layers.GlobalAveragePooling2D(),
-    layers.BatchNormalization(),
-    layers.Dense(128, activation='relu'),
-    layers.Dropout(0.5),
-    layers.Dense(len(class_names), activation='softmax')
-])
+inputs = tf.keras.Input(shape=(224, 224, 3))
+
+x = data_augmentation(inputs)
+x = base_model(x, training=False)
+x = layers.GlobalAveragePooling2D()(x)
+x = layers.BatchNormalization()(x)
+x = layers.Dense(128, activation='relu')(x)
+x = layers.Dropout(0.5)(x)
+
+outputs = layers.Dense(len(class_names), activation='softmax')(x)
+
+model = tf.keras.Model(inputs, outputs)
 
 # =========================
 # ⚙️ Compile (with label smoothing)
@@ -136,9 +138,9 @@ history = model.fit(
 )
 
 # =========================
-# 💾 Save Model
+# 💾 Save Model (Grad-CAM Compatible)
 # =========================
-model.save("model/hull_model.keras")
+model.save("model/hull_model.h5", include_optimizer=False)
 
 # =========================
 # 📊 Plot Accuracy

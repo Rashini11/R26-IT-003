@@ -47,4 +47,16 @@ def predict_image(img_path):
 # =========================
 # ▶️ Run
 # =========================
-predict_image("sample.jpg")
+# =========================
+# ▶️ Test multiple images
+# =========================
+folder_path = "test_images"
+
+if not os.path.exists(folder_path):
+    print("❌ test_images folder not found!")
+else:
+    for file in os.listdir(folder_path):
+        if file.lower().endswith((".jpg", ".png", ".jpeg")):
+            print("\n==============================")
+            print("📷 Testing:", file)
+            predict_image(os.path.join(folder_path, file))

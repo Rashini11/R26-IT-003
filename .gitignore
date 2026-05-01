@@ -4,3 +4,5 @@ __pycache__/
 *.keras
 *.pyc
 .ipynb_checkpoints/
+test_images/
+results/
