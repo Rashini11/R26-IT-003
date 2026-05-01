@@ -1,22 +1,38 @@
 # -----------------------------
-# Python cache & environments
+# Dataset / Images (IMPORTANT)
+# -----------------------------
+# Ignore ONLY training images
+data/raw/images/train/
+
+# (Optional) If you want to ignore ALL images
+# *.jpg
+# *.jpeg
+# *.png
+
+# -----------------------------
+# Model files (large)
+# -----------------------------
+*.h5
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# -----------------------------
+# Python cache
 # -----------------------------
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-*.so
 
+# -----------------------------
 # Virtual environments
+# -----------------------------
 venv/
 env/
 ENV/
 .venv/
-
-# -----------------------------
-# Jupyter Notebook checkpoints
-# -----------------------------
-.ipynb_checkpoints/
 
 # -----------------------------
 # Logs & temp files
@@ -38,26 +54,12 @@ Thumbs.db
 .idea/
 
 # -----------------------------
-# Dataset / Images (IMPORTANT)
+# Jupyter
 # -----------------------------
-
-# Ignore ONLY the training images folder
-data/raw/images/train/
-
-# Allow everything else
-!data/processed_sensor.csv
+.ipynb_checkpoints/
 
 # -----------------------------
-# Model files (usually large)
-# -----------------------------
-*.h5
-*.pt
-*.pth
-*.ckpt
-*.onnx
-
-# -----------------------------
-# Output folders
+# Outputs / experiment results
 # -----------------------------
 outputs/
 results/

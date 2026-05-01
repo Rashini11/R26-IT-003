@@ -1,0 +1,27 @@
+SEA STATE CLASSIFICATION EVALUATION REPORT
+==========================================
+
+Dataset Size: 7200
+Train Size: 5040
+Validation Size: 1080
+Test Size: 1080
+
+Final Test Accuracy: 96.94%
+
+Classification Report:
+              precision    recall  f1-score   support
+
+        calm       0.97      0.94      0.95       269
+    moderate       0.93      0.97      0.95       272
+       rough       0.99      0.97      0.98       271
+  very_rough       1.00      0.99      0.99       268
+
+    accuracy                           0.97      1080
+   macro avg       0.97      0.97      0.97      1080
+weighted avg       0.97      0.97      0.97      1080
+
+Confusion Matrix:
+[[254  14   1   0]
+ [  7 265   0   0]
+ [  2   6 263   0]
+ [  0   0   3 265]]
