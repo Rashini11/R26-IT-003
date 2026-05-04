@@ -1,0 +1,25 @@
+UPDATED EVALUATION REPORT
+
+Label Mapping:
+0 = calm
+1 = moderate
+2 = rough
+3 = very_rough
+
+Classification Report:
+              precision    recall  f1-score   support
+
+        calm       0.99      0.97      0.98      2700
+    moderate       0.95      0.99      0.97      2700
+       rough       0.99      0.97      0.98      2700
+  very_rough       1.00      1.00      1.00      2700
+
+    accuracy                           0.98     10800
+   macro avg       0.98      0.98      0.98     10800
+weighted avg       0.98      0.98      0.98     10800
+
+Confusion Matrix:
+[[2620   67    6    7]
+ [  13 2673    9    5]
+ [   9   68 2622    1]
+ [   0    0   11 2689]]

@@ -1,0 +1,67 @@
+# -----------------------------
+# Dataset / Images (IMPORTANT)
+# -----------------------------
+# Ignore ONLY training images
+data/raw/images/train/
+
+# (Optional) If you want to ignore ALL images
+# *.jpg
+# *.jpeg
+# *.png
+
+# -----------------------------
+# Model files (large)
+# -----------------------------
+*.h5
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# -----------------------------
+# Python cache
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# -----------------------------
+# Virtual environments
+# -----------------------------
+venv/
+env/
+ENV/
+.venv/
+
+# -----------------------------
+# Logs & temp files
+# -----------------------------
+*.log
+*.tmp
+*.temp
+
+# -----------------------------
+# OS files
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# IDE files
+# -----------------------------
+.vscode/
+.idea/
+
+# -----------------------------
+# Jupyter
+# -----------------------------
+.ipynb_checkpoints/
+
+# -----------------------------
+# Outputs / experiment results
+# -----------------------------
+outputs/
+results/
+runs/
+checkpoints/
