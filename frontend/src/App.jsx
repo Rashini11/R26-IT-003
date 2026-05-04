@@ -5,9 +5,12 @@ function App() {
   const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showGradcam, setShowGradcam] = useState(false);
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
+    setResult(null); 
+    setShowGradcam(false); // reset Grad-CAM visibility when new image selected
   };
 
   const handleUpload = async () => {
@@ -48,6 +51,15 @@ function App() {
         {loading ? "Predicting..." : "Predict"}
       </button>
 
+      {/* 🔹 Show uploaded image */}
+      {file && (
+        <div style={{ marginTop: "20px" }}>
+          <h3>Uploaded Image</h3>
+          <img src={URL.createObjectURL(file)} width="300" />
+        </div>
+      )}
+
+      {/* 🔹 Show results */}
       {result && (
         <div style={{ marginTop: "20px" }}>
           <h2>Result</h2>
@@ -55,6 +67,21 @@ function App() {
           <p><b>Confidence:</b> {result.confidence}</p>
           <p><b>Recommendation:</b> {result.recommendation}</p>
           <p><b>Warning:</b> {result.warning}</p>
+
+          {/* 🔥 Grad-CAM Image */}
+          <button onClick={() => setShowGradcam(!showGradcam)}>
+            {showGradcam ? "Hide Grad-CAM" : "Show Grad-CAM"}
+          </button>
+
+          {showGradcam && (
+            <div style={{ marginTop: "20px" }}>
+              <h3>Grad-CAM Visualization</h3>
+              <img
+                src={`data:image/jpeg;base64,${result.gradcam}`}
+                width="300"
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
