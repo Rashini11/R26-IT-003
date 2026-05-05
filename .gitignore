@@ -1,8 +1,79 @@
+# =============================
+# DATASETS & IMAGES
+# =============================
 data/
-__pycache__/
+dataset/
+test_images/
+*.jpg
+*.jpeg
+*.png
+
+# =============================
+# BACKEND GENERATED FILES
+# =============================
+backend/uploads/
+
+# =============================
+# MODEL FILES (LARGE)
+# =============================
 *.h5
 *.keras
+*.pth
+*.pt
+*.onnx
+*.ckpt
+*.zip
+
+# =============================
+# FRONTEND (REACT / VITE)
+# =============================
+frontend/node_modules/
+frontend/dist/
+frontend/package-lock.json
+
+# =============================
+# PYTHON CACHE
+# =============================
+__pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# =============================
+# VIRTUAL ENVIRONMENTS
+# =============================
+venv/
+env/
+.venv/
+
+# =============================
+# LOGS & TEMP FILES
+# =============================
+*.log
+*.tmp
+*.temp
+
+# =============================
+# IDE FILES
+# =============================
+.vscode/
+.idea/
+
+# =============================
+# JUPYTER
+# =============================
 .ipynb_checkpoints/
-test_images/
+
+# =============================
+# OUTPUTS / EXPERIMENTS
+# =============================
+outputs/
 results/
+runs/
+checkpoints/
+
+# =============================
+# OS FILES
+# =============================
+.DS_Store
+Thumbs.db
