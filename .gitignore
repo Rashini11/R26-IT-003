@@ -17,7 +17,6 @@ backend/uploads/
 # MODEL FILES (LARGE)
 # =============================
 *.h5
-*.keras
 *.pth
 *.pt
 *.onnx
