@@ -1,22 +1,35 @@
-# -----------------------------
-# Dataset / Images (IMPORTANT)
-# -----------------------------
-# Ignore ONLY training images
-data/raw/images/train/
+# =============================
+# DATASETS & IMAGES
+# =============================
+data/
+dataset/
+test_images/
+*.jpg
+*.jpeg
+*.png
 
-# (Optional) If you want to ignore ALL images
-# *.jpg
-# *.jpeg
-# *.png
+# =============================
+# BACKEND GENERATED FILES
+# =============================
+backend/uploads/
 
-# -----------------------------
-# Model files (large)
-# -----------------------------
+# =============================
+# MODEL FILES (LARGE)
+# =============================
 *.h5
-*.pt
+*.keras
 *.pth
-*.ckpt
+*.pt
 *.onnx
+*.ckpt
+*.zip
+
+# =============================
+# FRONTEND (REACT / VITE)
+# =============================
+frontend/node_modules/
+frontend/dist/
+frontend/package-lock.json
 
 # final image-only sea state model
 !model/image_only_model.pth
@@ -26,46 +39,45 @@ data/raw/images/train/
 # Python cache
 # -----------------------------
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
 *.pyd
 
-# -----------------------------
-# Virtual environments
-# -----------------------------
+# =============================
+# VIRTUAL ENVIRONMENTS
+# =============================
 venv/
 env/
-ENV/
 .venv/
 
-# -----------------------------
-# Logs & temp files
-# -----------------------------
+# =============================
+# LOGS & TEMP FILES
+# =============================
 *.log
 *.tmp
 *.temp
 
-# -----------------------------
-# OS files
-# -----------------------------
-.DS_Store
-Thumbs.db
-
-# -----------------------------
-# IDE files
-# -----------------------------
+# =============================
+# IDE FILES
+# =============================
 .vscode/
 .idea/
 
-# -----------------------------
-# Jupyter
-# -----------------------------
+# =============================
+# JUPYTER
+# =============================
 .ipynb_checkpoints/
 
-# -----------------------------
-# Outputs / experiment results
-# -----------------------------
+# =============================
+# OUTPUTS / EXPERIMENTS
+# =============================
 outputs/
 results/
 runs/
 checkpoints/
+
+# =============================
+# OS FILES
+# =============================
+.DS_Store
+Thumbs.db

@@ -2,68 +2,113 @@ import { useState } from "react";
 import axios from "axios";
 
 function App() {
-  const [image, setImage] = useState(null);
-  const [preview, setPreview] = useState(null);
+  const [mode, setMode] = useState("hull");
+  const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [showGradcam, setShowGradcam] = useState(false);
 
-  const handleChange = (e) => {
-    const file = e.target.files[0];
-    setImage(file);
-    setPreview(URL.createObjectURL(file));
+  const handleFileChange = (e) => {
+    setFile(e.target.files[0]);
+    setResult(null);
+    setShowGradcam(false);
+  };
+
+  const handleModeChange = (e) => {
+    setMode(e.target.value);
+    setResult(null);
+    setShowGradcam(false);
   };
 
   const handleUpload = async () => {
-    if (!image) {
-      alert("Select an image first");
-      return;
-    }
+    if (!file) return alert("Please select an image");
+
+    const endpoint =
+      mode === "hull"
+        ? "http://127.0.0.1:8000/predict-hull-defect"
+        : "http://127.0.0.1:8000/predict-sea-state";
 
     const formData = new FormData();
-    formData.append("file", image);
+    formData.append("file", file);
 
     try {
-      const res = await axios.post(
-        "http://127.0.0.1:8000/predict",
-        formData
-      );
+      setLoading(true);
+
+      const res = await axios.post(endpoint, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
 
       setResult(res.data);
+      setShowGradcam(false);
     } catch (err) {
-      console.error(err);
+      console.log(err);
       alert("Prediction failed");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div style={{ textAlign: "center", marginTop: "40px" }}>
-      <h1>🌊 Sea State Classification</h1>
+    <div style={{ textAlign: "center", marginTop: "50px" }}>
+      <h1>Marine AI Inspection System</h1>
 
-      <input type="file" onChange={handleChange} />
+      <select value={mode} onChange={handleModeChange}>
+        <option value="hull">Hull Defect Detection</option>
+        <option value="sea">Sea State Classification</option>
+      </select>
 
-      {preview && (
-        <div>
-          <img
-            src={preview}
-            alt="preview"
-            style={{ width: "300px", marginTop: "20px" }}
-          />
+      <br /><br />
+
+      <input type="file" onChange={handleFileChange} />
+
+      <br /><br />
+
+      <button onClick={handleUpload}>
+        {loading ? "Predicting..." : "Predict"}
+      </button>
+
+      {file && (
+        <div style={{ marginTop: "20px" }}>
+          <h3>Uploaded Image</h3>
+          <img src={URL.createObjectURL(file)} width="300" alt="uploaded" />
         </div>
       )}
 
-      <br />
-      <button onClick={handleUpload} style={{ marginTop: "20px" }}>
-        Predict
-      </button>
+      {result && mode === "hull" && (
+        <div style={{ marginTop: "20px" }}>
+          <h2>Hull Defect Result</h2>
+          <p><b>Prediction:</b> {result.prediction}</p>
+          <p><b>Confidence:</b> {(result.confidence * 100).toFixed(2)}%</p>
+          <p><b>Recommendation:</b> {result.recommendation}</p>
+          <p><b>Warning:</b> {result.warning}</p>
 
-      {result && (
-        <div style={{ marginTop: "30px" }}>
-          <h2>Prediction: {result.predicted_sea_state}</h2>
-          <h3>Confidence: {result.confidence}%</h3>
+          <button onClick={() => setShowGradcam(!showGradcam)}>
+            {showGradcam ? "Hide Grad-CAM" : "Show Grad-CAM"}
+          </button>
 
-          <h4>Probabilities:</h4>
+          {showGradcam && (
+            <div style={{ marginTop: "20px" }}>
+              <h3>Grad-CAM Visualization</h3>
+              <img
+                src={`data:image/jpeg;base64,${result.gradcam}`}
+                width="300"
+                alt="gradcam"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {result && mode === "sea" && (
+        <div style={{ marginTop: "20px" }}>
+          <h2>Sea State Result</h2>
+          <p><b>Prediction:</b> {result.predicted_sea_state}</p>
+          <p><b>Confidence:</b> {result.confidence}%</p>
+
+          <h3>Probabilities</h3>
           {Object.entries(result.probabilities).map(([key, value]) => (
             <p key={key}>
-              {key}: {value}%
+              <b>{key}:</b> {value}%
             </p>
           ))}
         </div>
