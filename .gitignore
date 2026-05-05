@@ -18,6 +18,10 @@ data/raw/images/train/
 *.ckpt
 *.onnx
 
+# final image-only sea state model
+!model/image_only_model.pth
+!model/sea_model.pth
+!model/mobilenet_model.pth
 # -----------------------------
 # Python cache
 # -----------------------------
