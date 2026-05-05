@@ -2,6 +2,7 @@ import { useState } from "react";
 import axios from "axios";
 
 function App() {
+  const [mode, setMode] = useState("hull");
   const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -9,12 +10,23 @@ function App() {
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
-    setResult(null); 
-    setShowGradcam(false); // reset Grad-CAM visibility when new image selected
+    setResult(null);
+    setShowGradcam(false);
+  };
+
+  const handleModeChange = (e) => {
+    setMode(e.target.value);
+    setResult(null);
+    setShowGradcam(false);
   };
 
   const handleUpload = async () => {
     if (!file) return alert("Please select an image");
+
+    const endpoint =
+      mode === "hull"
+        ? "http://127.0.0.1:8000/predict-hull-defect"
+        : "http://127.0.0.1:8000/predict-sea-state";
 
     const formData = new FormData();
     formData.append("file", file);
@@ -22,18 +34,15 @@ function App() {
     try {
       setLoading(true);
 
-      const res = await axios.post(
-        "http://127.0.0.1:8000/predict",
-        formData,
-        {
-          headers: { "Content-Type": "multipart/form-data" },
-        }
-      );
+      const res = await axios.post(endpoint, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
 
       setResult(res.data);
+      setShowGradcam(false);
     } catch (err) {
       console.log(err);
-      alert("Backend not connected");
+      alert("Prediction failed");
     } finally {
       setLoading(false);
     }
@@ -41,7 +50,14 @@ function App() {
 
   return (
     <div style={{ textAlign: "center", marginTop: "50px" }}>
-      <h1>Hull Defect Detection AI</h1>
+      <h1>Marine AI Inspection System</h1>
+
+      <select value={mode} onChange={handleModeChange}>
+        <option value="hull">Hull Defect Detection</option>
+        <option value="sea">Sea State Classification</option>
+      </select>
+
+      <br /><br />
 
       <input type="file" onChange={handleFileChange} />
 
@@ -51,24 +67,21 @@ function App() {
         {loading ? "Predicting..." : "Predict"}
       </button>
 
-      {/* 🔹 Show uploaded image */}
       {file && (
         <div style={{ marginTop: "20px" }}>
           <h3>Uploaded Image</h3>
-          <img src={URL.createObjectURL(file)} width="300" />
+          <img src={URL.createObjectURL(file)} width="300" alt="uploaded" />
         </div>
       )}
 
-      {/* 🔹 Show results */}
-      {result && (
+      {result && mode === "hull" && (
         <div style={{ marginTop: "20px" }}>
-          <h2>Result</h2>
+          <h2>Hull Defect Result</h2>
           <p><b>Prediction:</b> {result.prediction}</p>
-          <p><b>Confidence:</b> {result.confidence}</p>
+          <p><b>Confidence:</b> {(result.confidence * 100).toFixed(2)}%</p>
           <p><b>Recommendation:</b> {result.recommendation}</p>
           <p><b>Warning:</b> {result.warning}</p>
 
-          {/* 🔥 Grad-CAM Image */}
           <button onClick={() => setShowGradcam(!showGradcam)}>
             {showGradcam ? "Hide Grad-CAM" : "Show Grad-CAM"}
           </button>
@@ -79,9 +92,25 @@ function App() {
               <img
                 src={`data:image/jpeg;base64,${result.gradcam}`}
                 width="300"
+                alt="gradcam"
               />
             </div>
           )}
+        </div>
+      )}
+
+      {result && mode === "sea" && (
+        <div style={{ marginTop: "20px" }}>
+          <h2>Sea State Result</h2>
+          <p><b>Prediction:</b> {result.predicted_sea_state}</p>
+          <p><b>Confidence:</b> {result.confidence}%</p>
+
+          <h3>Probabilities</h3>
+          {Object.entries(result.probabilities).map(([key, value]) => (
+            <p key={key}>
+              <b>{key}:</b> {value}%
+            </p>
+          ))}
         </div>
       )}
     </div>
