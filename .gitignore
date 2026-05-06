@@ -11,13 +11,19 @@ __pycache__/
 # macOS
 .DS_Store
 
-# Backend temp files
+# VS Code
+.vscode/
+
+# Backend temp/uploads
 backend/temp/
+backend/uploads/
 
 # Large datasets - do not push
 ml/dataset/
 ml/dataset_v2/
 ml/dataset_v2_balanced/
+data/
+dataset.csv
 
 # YOLO training output folders - do not push
 runs/
@@ -25,21 +31,15 @@ runs/
 # Dataset caches
 *.cache
 
-# Downloaded pretrained base weights
+# Downloaded pretrained/base weights
 yolo11n-cls.pt
 yolo11s-cls.pt
-yolo11m-cls.pt.vscode/
+yolo11m-cls.pt
+yolov8n.pt
 
-# Local VS Code settings
-.vscode/
-
-# Notebooks - local experiments only
-ml/notebooks/
-
-# Old/extra model checkpoints
+# Old/extra local checkpoints
 ml/models/*.pth
-
-# Keep only final deployment models
 !ml/models/final/
 !ml/models/final/*.pth
 !ml/models/final/*.pt
+ml/notebooks/
