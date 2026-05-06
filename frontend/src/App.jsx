@@ -78,7 +78,7 @@ function App() {
       )}
 
       {result && mode === "hull" && (
-        <div style={{ marginTop: "20px" }}>
+        <div style={{ marginTop: "20px", display: "inline-block", textAlign: "center" }}>
           <h2>Hull Defect Result</h2>
           <p><b>Prediction:</b> {result.prediction}</p>
           <p><b>Confidence:</b> {(result.confidence * 100).toFixed(2)}%</p>
@@ -103,7 +103,7 @@ function App() {
       )}
 
       {result && mode === "sea" && (
-        <div style={{ marginTop: "20px" }}>
+        <div style={{ marginTop: "20px", display: "inline-block", textAlign: "center" }}>
           <h2>Sea State Result</h2>
           <p><b>Prediction:</b> {result.predicted_sea_state}</p>
           <p><b>Confidence:</b> {result.confidence}%</p>
@@ -118,18 +118,19 @@ function App() {
       )}
 
       {result && mode === "boat" && (
-        <div style={{ marginTop: "20px" }}>
+        <div style={{ marginTop: "20px", display: "inline-block", textAlign: "center" }}>
           <h2>Boat Detection Result</h2>
           {result.results && result.results.length > 0 ? (
             <div>
               <p><b>Found {result.count} object(s):</b></p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
                 {result.results.map((detection, idx) => (
                   <div key={idx} style={{
-                    background: '#e0f7fa',
+                    background: '#000000',
                     padding: '8px 12px',
                     borderRadius: '4px',
-                    border: '1px solid #b2ebf2'
+                    border: '1px solid #b2ebf2',
+                    margin: '30px',
                   }}>
                     {detection.label}: {detection.confidence}%
                   </div>

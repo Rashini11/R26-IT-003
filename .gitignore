@@ -23,6 +23,7 @@ backend/uploads/
 *.onnx
 *.ckpt
 *.zip
+!backend/yolov8n.pt
 
 # =============================
 # FRONTEND (REACT / VITE)
