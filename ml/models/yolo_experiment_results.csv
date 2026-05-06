@@ -1,0 +1,4 @@
+model_name,model_file,test_accuracy,model_path
+YOLO11_Nano,yolo11n-cls.pt,99.87,/Users/dewna/Desktop/Research Project - Dewna/R26-IT-003/runs/classify/ml/models/yolo_runs/YOLO11_Nano/weights/best.pt
+YOLO11_Small,yolo11s-cls.pt,99.83,/Users/dewna/Desktop/Research Project - Dewna/R26-IT-003/runs/classify/ml/models/yolo_runs/YOLO11_Small/weights/best.pt
+YOLO11_Medium,yolo11m-cls.pt,99.92,/Users/dewna/Desktop/Research Project - Dewna/R26-IT-003/runs/classify/ml/models/yolo_runs/YOLO11_Medium/weights/best.pt

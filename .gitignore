@@ -1,86 +1,45 @@
-# =============================
-# DATASETS & IMAGES
-# =============================
-data/
-dataset/
-test_images/
-*.jpg
-*.jpeg
-*.png
+# Python environment
+venv/
+.env
 
-# =============================
-# BACKEND GENERATED FILES
-# =============================
-backend/uploads/
-
-# =============================
-# MODEL FILES (LARGE)
-# =============================
-*.h5
-*.keras
-*.pth
-*.pt
-*.onnx
-*.ckpt
-*.zip
-#!backend/yolov8n.pt
-#!model/boat_detection.pt
-#!model/boat_detection_last.pt
-
-# =============================
-# FRONTEND (REACT / VITE)
-# =============================
-frontend/node_modules/
-frontend/dist/
-frontend/package-lock.json
-
-# final image-only sea state model
-!model/image_only_model.pth
-!model/sea_model.pth
-!model/mobilenet_model.pth
-# -----------------------------
 # Python cache
-# -----------------------------
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-
-# =============================
-# VIRTUAL ENVIRONMENTS
-# =============================
-venv/
-env/
-.venv/
-
-# =============================
-# LOGS & TEMP FILES
-# =============================
-*.log
-*.tmp
-*.temp
-
-# =============================
-# IDE FILES
-# =============================
-.vscode/
-.idea/
-
-# =============================
-# JUPYTER
-# =============================
 .ipynb_checkpoints/
+*.ipynb_checkpoints
 
-# =============================
-# OUTPUTS / EXPERIMENTS
-# =============================
-outputs/
-results/
-runs/
-checkpoints/
-
-# =============================
-# OS FILES
-# =============================
+# macOS
 .DS_Store
-Thumbs.db
+
+# VS Code
+.vscode/
+
+# Backend temp/uploads
+backend/temp/
+backend/uploads/
+
+# Large datasets - do not push
+ml/dataset/
+ml/dataset_v2/
+ml/dataset_v2_balanced/
+data/
+dataset.csv
+
+# YOLO training output folders - do not push
+runs/
+
+# Dataset caches
+*.cache
+
+# Downloaded pretrained/base weights
+yolo11n-cls.pt
+yolo11s-cls.pt
+yolo11m-cls.pt
+yolov8n.pt
+
+# Old/extra local checkpoints
+ml/models/*.pth
+!ml/models/final/
+!ml/models/final/*.pth
+!ml/models/final/*.pt
+ml/notebooks/
