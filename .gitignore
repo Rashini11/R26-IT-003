@@ -24,6 +24,8 @@ backend/uploads/
 *.ckpt
 *.zip
 !backend/yolov8n.pt
+!model/boat_detection.pt
+!model/boat_detection_last.pt
 
 # =============================
 # FRONTEND (REACT / VITE)
