@@ -26,7 +26,9 @@ function App() {
     const endpoint =
       mode === "hull"
         ? "http://127.0.0.1:8000/predict-hull-defect"
-        : "http://127.0.0.1:8000/predict-sea-state";
+        : mode === "sea"
+        ? "http://127.0.0.1:8000/predict-sea-state"
+        : "http://127.0.0.1:8000/predict-boat-detection";
 
     const formData = new FormData();
     formData.append("file", file);
@@ -55,6 +57,7 @@ function App() {
       <select value={mode} onChange={handleModeChange}>
         <option value="hull">Hull Defect Detection</option>
         <option value="sea">Sea State Classification</option>
+        <option value="boat">Boat Detection</option>
       </select>
 
       <br /><br />
@@ -111,6 +114,31 @@ function App() {
               <b>{key}:</b> {value}%
             </p>
           ))}
+        </div>
+      )}
+
+      {result && mode === "boat" && (
+        <div style={{ marginTop: "20px" }}>
+          <h2>Boat Detection Result</h2>
+          {result.results && result.results.length > 0 ? (
+            <div>
+              <p><b>Found {result.count} object(s):</b></p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {result.results.map((detection, idx) => (
+                  <div key={idx} style={{
+                    background: '#e0f7fa',
+                    padding: '8px 12px',
+                    borderRadius: '4px',
+                    border: '1px solid #b2ebf2'
+                  }}>
+                    {detection.label}: {detection.confidence}%
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p>No boats detected in this image.</p>
+          )}
         </div>
       )}
     </div>
