@@ -23,9 +23,9 @@ backend/uploads/
 *.onnx
 *.ckpt
 *.zip
-!backend/yolov8n.pt
-!model/boat_detection.pt
-!model/boat_detection_last.pt
+#!backend/yolov8n.pt
+#!model/boat_detection.pt
+#!model/boat_detection_last.pt
 
 # =============================
 # FRONTEND (REACT / VITE)
