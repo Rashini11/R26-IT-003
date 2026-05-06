@@ -179,19 +179,17 @@ sea_model.eval()
 # BOAT DETECTION MODEL - YOLOv8
 # =====================================================
 # Find and load YOLO model weights
-BOAT_MODEL_PATH = None
-for candidate in ['runs/detect/train-4/weights/last.pt', 'runs/detect/train-5/weights/last.pt']:
-    candidate_path = Path(BASE_DIR) / "backend" / candidate
-    if candidate_path.exists():
-        BOAT_MODEL_PATH = candidate_path
-        print(f'Loading boat detection model from: {BOAT_MODEL_PATH}')
-        break
+BOAT_MODEL_PATH = Path(BASE_DIR) / "model" / "boat_detection.pt"
 
-if not BOAT_MODEL_PATH:
+if not BOAT_MODEL_PATH.exists():
+    BOAT_MODEL_PATH = Path(BASE_DIR) / "model" / "boat_detection_last.pt"
+
+if not BOAT_MODEL_PATH.exists():
     print('ERROR: No boat detection weights file found!')
     boat_model = None
 else:
     try:
+        print(f'Loading boat detection model from: {BOAT_MODEL_PATH}')
         boat_model = YOLO(str(BOAT_MODEL_PATH))
         print('Boat detection model loaded successfully')
     except Exception as e:
