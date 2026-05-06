@@ -180,8 +180,8 @@ sea_model.eval()
 # =====================================================
 # Find and load YOLO model weights
 BOAT_MODEL_PATH = None
-for candidate in ['runs/detect/train-4/weights/last.pt', 'runs/detect/train-5/weights/last.pt']:
-    candidate_path = Path(BASE_DIR) / "backend" / candidate
+for candidate in ['model/boat_detection.pt', 'model/boat_detection_last.pt']:
+    candidate_path = Path(BASE_DIR) / candidate
     if candidate_path.exists():
         BOAT_MODEL_PATH = candidate_path
         print(f'Loading boat detection model from: {BOAT_MODEL_PATH}')
