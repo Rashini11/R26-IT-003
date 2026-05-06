@@ -1,0 +1,4 @@
+model_name,best_val_accuracy,test_accuracy,model_path
+SimpleCNN,93.88,93.67,ml/models/SimpleCNN_best.pth
+DeeperCNN,94.62,94.58,ml/models/DeeperCNN_best.pth
+TinyVGG,93.96,93.96,ml/models/TinyVGG_best.pth

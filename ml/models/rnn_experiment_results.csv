@@ -1,0 +1,4 @@
+model_name,best_val_accuracy,test_accuracy,model_path
+SimpleRNN,78.83,79.08,ml/models/SimpleRNN_best.pth
+LSTM,86.5,87.17,ml/models/LSTM_best.pth
+GRU,88.38,88.42,ml/models/GRU_best.pth

@@ -1,0 +1,45 @@
+# Python environment
+venv/
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# macOS
+.DS_Store
+
+# Backend temp files
+backend/temp/
+
+# Large datasets - do not push
+ml/dataset/
+ml/dataset_v2/
+ml/dataset_v2_balanced/
+
+# YOLO training output folders - do not push
+runs/
+
+# Dataset caches
+*.cache
+
+# Downloaded pretrained base weights
+yolo11n-cls.pt
+yolo11s-cls.pt
+yolo11m-cls.pt.vscode/
+
+# Local VS Code settings
+.vscode/
+
+# Notebooks - local experiments only
+ml/notebooks/
+
+# Old/extra model checkpoints
+ml/models/*.pth
+
+# Keep only final deployment models
+!ml/models/final/
+!ml/models/final/*.pth
+!ml/models/final/*.pt
