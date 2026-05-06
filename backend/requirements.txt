@@ -4,3 +4,8 @@ python-multipart
 torch
 torchvision
 pillow
+tensorflow
+ultralytics
+opencv-python
+lxml
+scikit-learn

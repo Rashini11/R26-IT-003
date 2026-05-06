@@ -17,6 +17,11 @@ from PIL import Image
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
+from ultralytics import YOLO
+from pathlib import Path
+import tempfile
+import traceback
+
 
 app = FastAPI(title="Marine AI Inspection System")
 
@@ -170,6 +175,28 @@ sea_model.load_state_dict(torch.load(SEA_MODEL_PATH, map_location=device))
 sea_model.eval()
 
 
+# =====================================================
+# BOAT DETECTION MODEL - YOLOv8
+# =====================================================
+# Find and load YOLO model weights
+BOAT_MODEL_PATH = Path(BASE_DIR) / "model" / "boat_detection.pt"
+
+if not BOAT_MODEL_PATH.exists():
+    BOAT_MODEL_PATH = Path(BASE_DIR) / "model" / "boat_detection_last.pt"
+
+if not BOAT_MODEL_PATH.exists():
+    print('ERROR: No boat detection weights file found!')
+    boat_model = None
+else:
+    try:
+        print(f'Loading boat detection model from: {BOAT_MODEL_PATH}')
+        boat_model = YOLO(str(BOAT_MODEL_PATH))
+        print('Boat detection model loaded successfully')
+    except Exception as e:
+        print(f'ERROR loading boat model: {e}')
+        boat_model = None
+
+
 @app.post("/predict-sea-state")
 async def predict_sea_state(file: UploadFile = File(...)):
     file_path = os.path.join(UPLOAD_DIR, file.filename)
@@ -203,6 +230,62 @@ async def predict_sea_state(file: UploadFile = File(...)):
     }
 
 
+@app.post("/predict-boat-detection")
+async def predict_boat_detection(file: UploadFile = File(...)):
+    """Run YOLO inference on uploaded image for boat detection"""
+    if boat_model is None:
+        return {"error": "Boat detection model not loaded"}
+
+    try:
+        # Validate file
+        if not file.filename:
+            return {"error": "No filename"}
+        
+        filename_lower = file.filename.lower()
+        if not filename_lower.endswith(('.png', '.jpg', '.jpeg', '.bmp')):
+            return {"error": f'Invalid file type: {filename_lower}'}
+        
+        # Save to temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
+            contents = await file.read()
+            tmp.write(contents)
+            tmp_path = tmp.name
+        
+        # Run inference
+        results = boat_model(tmp_path, save=False, verbose=False)
+        
+        # Parse results
+        detections = []
+        if results and len(results) > 0:
+            result = results[0]
+            if result.boxes is not None and len(result.boxes) > 0:
+                for box in result.boxes:
+                    try:
+                        cls_id = int(box.cls.item()) if box.cls is not None else 0
+                        conf = float(box.conf.item()) if box.conf is not None else 0
+                        label = boat_model.names.get(cls_id, f'class_{cls_id}')
+                        detections.append({
+                            'label': label,
+                            'confidence': round(conf * 100, 1)
+                        })
+                    except Exception as e:
+                        print(f'Error parsing box: {e}')
+        
+        # Clean up
+        Path(tmp_path).unlink()
+        
+        return {
+            'image': file.filename,
+            'results': detections,
+            'count': len(detections)
+        }
+    
+    except Exception as e:
+        print(f'ERROR: {e}')
+        traceback.print_exc()
+        return {"error": f"Inference failed: {str(e)}"}
+
+
 @app.get("/")
 def home():
     return {
@@ -210,5 +293,6 @@ def home():
         "endpoints": {
             "hull_defect": "/predict-hull-defect",
             "sea_state": "/predict-sea-state",
+            "boat_detection": "/predict-boat-detection",
         },
     }
