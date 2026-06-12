@@ -14,3 +14,4 @@ tensorflow
 scikit-learn
 pandas
 matplotlib
+ultralytics

@@ -1,0 +1,60 @@
+[
+    {
+        "timestamp": "2026-05-25 22:55:23",
+        "filename": "calm.JPG",
+        "predicted_sea_state": "calm",
+        "confidence": 100.0,
+        "probabilities": {
+            "calm": 100.0,
+            "moderate": 0.0,
+            "rough": 0.0,
+            "very_rough": 0.0
+        },
+        "image_quality": {
+            "brightness_value": 133.05,
+            "contrast_value": 13.83,
+            "sharpness_value": 29.51,
+            "brightness_status": "Normal",
+            "contrast_status": "Low contrast / possible haze or fog",
+            "sharpness_status": "Good sharpness",
+            "visibility_status": "Poor visibility"
+        },
+        "enhancement_applied": true,
+        "recommendation": {
+            "risk_level": "Low",
+            "message": "Normal sea condition detected. Navigation can continue under standard monitoring."
+        },
+        "warnings": [
+            "Image quality indicates poor visibility. Prediction may be less reliable."
+        ]
+    },
+    {
+        "timestamp": "2026-05-25 22:55:48",
+        "filename": "r.JPG",
+        "predicted_sea_state": "rough",
+        "confidence": 99.98,
+        "probabilities": {
+            "calm": 0.0,
+            "moderate": 0.02,
+            "rough": 99.98,
+            "very_rough": 0.0
+        },
+        "image_quality": {
+            "brightness_value": 96.02,
+            "contrast_value": 12.38,
+            "sharpness_value": 27.38,
+            "brightness_status": "Normal",
+            "contrast_status": "Low contrast / possible haze or fog",
+            "sharpness_status": "Good sharpness",
+            "visibility_status": "Poor visibility"
+        },
+        "enhancement_applied": true,
+        "recommendation": {
+            "risk_level": "High",
+            "message": "Rough sea condition detected. Navigation officers should reduce speed and monitor vessel stability."
+        },
+        "warnings": [
+            "Image quality indicates poor visibility. Prediction may be less reliable."
+        ]
+    }
+]

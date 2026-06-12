@@ -6,6 +6,7 @@ import tempfile
 import traceback
 import uuid
 from pathlib import Path
+from datetime import datetime
 
 import tensorflow as tf
 import numpy as np
@@ -17,9 +18,9 @@ import torch.nn.functional as F
 import torchvision.models as models
 from torchvision.models import MobileNet_V2_Weights
 from torchvision import transforms
-from PIL import Image
+from PIL import Image, ImageStat, ImageEnhance, ImageFilter
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 
 from ultralytics import YOLO
@@ -68,6 +69,7 @@ HULL_MODEL_PATH = os.path.join(BASE_DIR, "model", "hull_model.keras")
 
 SEA_MODEL_PATH = os.path.join(BASE_DIR, "model", "image_only_model.pth")
 LABEL_MAP_PATH = os.path.join(BASE_DIR, "model", "label_map.json")
+SEA_HISTORY_FILE = os.path.join(BASE_DIR, "backend", "sea_prediction_history.json")
 
 BOAT_MODEL_PATH = BASE_PATH / "model" / "boat_detection.pt"
 if not BOAT_MODEL_PATH.exists():
@@ -233,19 +235,160 @@ except Exception as e:
     sea_model = None
 
 
+# -----------------------------
+# Sea State Extra Features
+# -----------------------------
+def analyze_sea_image_quality(image: Image.Image):
+    grayscale = image.convert("L")
+
+    stat = ImageStat.Stat(grayscale)
+    brightness = stat.mean[0]
+    contrast = stat.stddev[0]
+
+    edges = grayscale.filter(ImageFilter.FIND_EDGES)
+    edge_stat = ImageStat.Stat(edges)
+    sharpness = edge_stat.stddev[0]
+
+    if brightness < 50:
+        brightness_status = "Low light"
+    elif brightness > 210:
+        brightness_status = "Overexposed"
+    else:
+        brightness_status = "Normal"
+
+    if contrast < 25:
+        contrast_status = "Low contrast / possible haze or fog"
+    elif contrast < 45:
+        contrast_status = "Moderate contrast"
+    else:
+        contrast_status = "Good contrast"
+
+    if sharpness < 8:
+        sharpness_status = "Blurry / low detail"
+    elif sharpness < 18:
+        sharpness_status = "Moderate sharpness"
+    else:
+        sharpness_status = "Good sharpness"
+
+    if brightness < 50 or contrast < 25 or sharpness < 8:
+        visibility_status = "Poor visibility"
+    elif brightness > 210 or contrast < 45 or sharpness < 18:
+        visibility_status = "Moderate visibility"
+    else:
+        visibility_status = "Clear visibility"
+
+    return {
+        "brightness_value": round(brightness, 2),
+        "contrast_value": round(contrast, 2),
+        "sharpness_value": round(sharpness, 2),
+        "brightness_status": brightness_status,
+        "contrast_status": contrast_status,
+        "sharpness_status": sharpness_status,
+        "visibility_status": visibility_status
+    }
+
+
+def enhance_sea_image(image: Image.Image):
+    image = ImageEnhance.Contrast(image).enhance(1.3)
+    image = ImageEnhance.Sharpness(image).enhance(1.2)
+    image = ImageEnhance.Brightness(image).enhance(1.05)
+    return image
+
+
+def get_sea_state_recommendation(sea_state: str):
+    recommendations_map = {
+        "calm": {
+            "risk_level": "Low",
+            "message": "Normal sea condition detected. Navigation can continue under standard monitoring."
+        },
+        "moderate": {
+            "risk_level": "Medium",
+            "message": "Moderate sea condition detected. Continue navigation with regular monitoring of wave changes."
+        },
+        "rough": {
+            "risk_level": "High",
+            "message": "Rough sea condition detected. Navigation officers should reduce speed and monitor vessel stability."
+        },
+        "very_rough": {
+            "risk_level": "Very High",
+            "message": "Very rough sea condition detected. High-risk condition. Extra caution and operational alerts are recommended."
+        }
+    }
+
+    return recommendations_map.get(
+        sea_state,
+        {
+            "risk_level": "Unknown",
+            "message": "No recommendation available for this sea state."
+        }
+    )
+
+
+def get_sea_confidence_warnings(confidence: float, visibility_status: str):
+    warnings = []
+
+    if confidence < 70:
+        warnings.append("Prediction confidence is low. Use a clearer image or verify with manual observation.")
+
+    if visibility_status == "Poor visibility":
+        warnings.append("Image quality indicates poor visibility. Prediction may be less reliable.")
+
+    if visibility_status == "Moderate visibility":
+        warnings.append("Image quality is moderate. Prediction should be interpreted with caution.")
+
+    if len(warnings) == 0:
+        warnings.append("Prediction confidence and image quality are acceptable.")
+
+    return warnings
+
+
+def load_sea_history():
+    if not os.path.exists(SEA_HISTORY_FILE):
+        return []
+
+    try:
+        with open(SEA_HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def save_sea_history_record(record):
+    history = load_sea_history()
+    history.append(record)
+
+    with open(SEA_HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(history, f, indent=4)
+
+
 @app.post("/predict-sea-state")
-async def predict_sea_state(file: UploadFile = File(...)):
+async def predict_sea_state(
+    file: UploadFile = File(...),
+    apply_enhancement: bool = Form(False)
+):
     if sea_model is None:
         return {"error": "Sea-state model not loaded"}
 
     try:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
         file_path = os.path.join(UPLOAD_DIR, file.filename)
 
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        image = Image.open(file_path).convert("RGB")
-        image = sea_transform(image)
+        original_image = Image.open(file_path).convert("RGB")
+
+        quality_report = analyze_sea_image_quality(original_image)
+
+        if apply_enhancement:
+            prediction_image = enhance_sea_image(original_image)
+            enhanced_path = os.path.join(UPLOAD_DIR, "enhanced_" + file.filename)
+            prediction_image.save(enhanced_path)
+        else:
+            prediction_image = original_image
+
+        image = sea_transform(prediction_image)
         image = image.unsqueeze(0).to(device)
 
         with torch.no_grad():
@@ -263,15 +406,48 @@ async def predict_sea_state(file: UploadFile = File(...)):
             label = reverse_label_map[i]
             class_probabilities[label] = round(prob.item() * 100, 2)
 
-        return {
+        recommendation = get_sea_state_recommendation(predicted_label)
+        warnings = get_sea_confidence_warnings(
+            round(confidence, 2),
+            quality_report["visibility_status"]
+        )
+
+        result = {
+            "timestamp": timestamp,
+            "filename": file.filename,
             "predicted_sea_state": predicted_label,
             "confidence": round(confidence, 2),
             "probabilities": class_probabilities,
+            "image_quality": quality_report,
+            "enhancement_applied": apply_enhancement,
+            "recommendation": recommendation,
+            "warnings": warnings
         }
+
+        save_sea_history_record(result)
+
+        return result
 
     except Exception as e:
         traceback.print_exc()
         return {"error": f"Sea-state prediction failed: {str(e)}"}
+
+
+@app.get("/sea-state-history")
+def get_sea_state_history():
+    return {
+        "history": load_sea_history()
+    }
+
+
+@app.delete("/sea-state-history")
+def clear_sea_state_history():
+    with open(SEA_HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump([], f, indent=4)
+
+    return {
+        "message": "Sea-state prediction history cleared successfully"
+    }
 
 
 # =====================================================
@@ -504,6 +680,7 @@ def home():
         "endpoints": {
             "hull_defect": "/predict-hull-defect",
             "sea_state": "/predict-sea-state",
+            "sea_state_history": "/sea-state-history",
             "boat_detection": "/predict-boat-detection",
             "radar_object_classification": "/predict-radar-object",
         },
