@@ -35,7 +35,29 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [showGradcam, setShowGradcam] = useState(false);
 
+  const [applyEnhancement, setApplyEnhancement] = useState(false);
+  const [seaHistory, setSeaHistory] = useState([]);
+
   const selectedModule = modules[mode];
+
+  const fetchSeaHistory = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/sea-state-history`);
+      const historyData = response.data.history || [];
+      setSeaHistory([...historyData].reverse());
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const clearSeaHistory = async () => {
+    try {
+      await axios.delete(`${API_BASE_URL}/sea-state-history`);
+      setSeaHistory([]);
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -57,6 +79,11 @@ function App() {
     setPreview(null);
     setResult(null);
     setShowGradcam(false);
+    setApplyEnhancement(false);
+
+    if (newMode === "sea") {
+      fetchSeaHistory();
+    }
   };
 
   const handleUpload = async () => {
@@ -68,6 +95,10 @@ function App() {
     const formData = new FormData();
     formData.append("file", file);
 
+    if (mode === "sea") {
+      formData.append("apply_enhancement", applyEnhancement);
+    }
+
     try {
       setLoading(true);
 
@@ -76,6 +107,10 @@ function App() {
       });
 
       setResult(response.data);
+
+      if (mode === "sea") {
+        fetchSeaHistory();
+      }
     } catch (error) {
       console.error(error);
       alert("Prediction failed. Please check whether the backend is running.");
@@ -140,17 +175,131 @@ function App() {
 
         {mode === "sea" && (
           <>
-            <ResultItem label="Prediction" value={result.predicted_sea_state} />
+            <div className="final-prediction sea-final">
+              <span>Predicted Sea State</span>
+              <strong>{result.predicted_sea_state}</strong>
+            </div>
+
             <ResultItem label="Confidence" value={`${result.confidence}%`} />
+
+            {result.recommendation && (
+              <div
+                className={`sea-risk-box risk-${result.recommendation.risk_level
+                  ?.toLowerCase()
+                  .replace(" ", "-")}`}
+              >
+                <span>Risk Level</span>
+                <strong>{result.recommendation.risk_level}</strong>
+              </div>
+            )}
 
             {result.probabilities && (
               <div className="probability-list">
                 <h3>Class Probabilities</h3>
+
                 {Object.entries(result.probabilities).map(([key, value]) => (
-                  <ResultItem key={key} label={key} value={`${value}%`} />
+                  <div className="sea-probability-row" key={key}>
+                    <span>{key}</span>
+                    <div className="sea-probability-bar">
+                      <div
+                        className="sea-probability-fill"
+                        style={{ width: `${value}%` }}
+                      ></div>
+                    </div>
+                    <strong>{value}%</strong>
+                  </div>
                 ))}
               </div>
             )}
+
+            {result.image_quality && (
+              <div className="sea-extra-section">
+                <h3>Image Quality Analysis</h3>
+
+                <ResultItem
+                  label="Brightness"
+                  value={`${result.image_quality.brightness_status} (${result.image_quality.brightness_value})`}
+                />
+                <ResultItem
+                  label="Contrast"
+                  value={`${result.image_quality.contrast_status} (${result.image_quality.contrast_value})`}
+                />
+                <ResultItem
+                  label="Sharpness"
+                  value={`${result.image_quality.sharpness_status} (${result.image_quality.sharpness_value})`}
+                />
+                <ResultItem
+                  label="Visibility"
+                  value={result.image_quality.visibility_status}
+                />
+                <ResultItem
+                  label="Enhancement Applied"
+                  value={result.enhancement_applied ? "Yes" : "No"}
+                />
+              </div>
+            )}
+
+            {result.recommendation && (
+              <div className="sea-extra-section sea-recommendation">
+                <h3>Decision Support Recommendation</h3>
+                <p>{result.recommendation.message}</p>
+              </div>
+            )}
+
+            {result.warnings && (
+              <div className="sea-extra-section sea-warning">
+                <h3>System Warnings</h3>
+                {result.warnings.map((warning, index) => (
+                  <p key={index}>⚠️ {warning}</p>
+                ))}
+              </div>
+            )}
+
+            <div className="sea-history-section">
+              <div className="sea-history-header">
+                <h3>Sea State Prediction History</h3>
+                <div>
+                  <button className="secondary-button" onClick={fetchSeaHistory}>
+                    Refresh
+                  </button>
+                  <button
+                    className="secondary-button sea-clear-button"
+                    onClick={clearSeaHistory}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              {seaHistory.length === 0 ? (
+                <p className="empty-text">
+                  No sea-state prediction history available.
+                </p>
+              ) : (
+                <div className="sea-history-grid">
+                  {seaHistory.slice(0, 6).map((item, index) => (
+                    <div className="sea-history-card" key={index}>
+                      <p>
+                        <strong>Time:</strong> {item.timestamp}
+                      </p>
+                      <p>
+                        <strong>File:</strong> {item.filename}
+                      </p>
+                      <p>
+                        <strong>Prediction:</strong> {item.predicted_sea_state}
+                      </p>
+                      <p>
+                        <strong>Confidence:</strong> {item.confidence}%
+                      </p>
+                      <p>
+                        <strong>Risk:</strong>{" "}
+                        {item.recommendation?.risk_level}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </>
         )}
 
@@ -263,6 +412,17 @@ function App() {
               <span>PNG, JPG, JPEG, BMP supported</span>
             </div>
           </label>
+
+          {mode === "sea" && (
+            <label className="enhancement-toggle">
+              <input
+                type="checkbox"
+                checked={applyEnhancement}
+                onChange={(e) => setApplyEnhancement(e.target.checked)}
+              />
+              <span>Apply image enhancement before prediction</span>
+            </label>
+          )}
 
           <button
             className="primary-button"

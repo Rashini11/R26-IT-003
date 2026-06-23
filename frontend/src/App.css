@@ -462,6 +462,179 @@ input {
   color: var(--text-muted);
 }
 
+/* =====================================================
+   Sea State Extra Features
+===================================================== */
+
+.enhancement-toggle {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.enhancement-toggle input {
+  width: 16px;
+  height: 16px;
+}
+
+.sea-final strong {
+  color: #ffffff;
+}
+
+.sea-risk-box {
+  margin: 18px 0;
+  padding: 16px 18px;
+  border-radius: 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+}
+
+.sea-risk-box span {
+  color: rgba(255, 255, 255, 0.78);
+  font-weight: 800;
+}
+
+.sea-risk-box strong {
+  font-size: 20px;
+}
+
+.risk-low {
+  background: rgba(45, 212, 191, 0.15);
+  border-color: rgba(45, 212, 191, 0.45);
+}
+
+.risk-medium {
+  background: rgba(250, 204, 21, 0.15);
+  border-color: rgba(250, 204, 21, 0.45);
+}
+
+.risk-high {
+  background: rgba(251, 146, 60, 0.16);
+  border-color: rgba(251, 146, 60, 0.45);
+}
+
+.risk-very-high {
+  background: rgba(251, 113, 133, 0.16);
+  border-color: rgba(251, 113, 133, 0.5);
+}
+
+.probability-list {
+  margin-top: 22px;
+}
+
+.probability-list h3,
+.sea-extra-section h3,
+.sea-history-section h3 {
+  margin: 0 0 14px;
+  font-size: 20px;
+  color: var(--blue);
+}
+
+.sea-probability-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 70px;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.sea-probability-row span {
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.sea-probability-row strong {
+  text-align: right;
+}
+
+.sea-probability-bar {
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.sea-probability-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--blue), var(--green));
+}
+
+.sea-extra-section {
+  margin-top: 24px;
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.16);
+  border: 1px solid var(--border);
+}
+
+.sea-recommendation p,
+.sea-warning p {
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 8px 0;
+}
+
+.sea-warning {
+  background: rgba(250, 204, 21, 0.08);
+  border-color: rgba(250, 204, 21, 0.28);
+}
+
+.sea-history-section {
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid rgba(255, 255, 255, 0.11);
+}
+
+.sea-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.sea-history-header .secondary-button {
+  margin-top: 0;
+  margin-left: 8px;
+  padding: 9px 14px;
+  border-radius: 12px;
+}
+
+.sea-clear-button {
+  background: rgba(251, 113, 133, 0.95);
+  color: white;
+}
+
+.sea-history-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.sea-history-card {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-left: 4px solid var(--green);
+}
+
+.sea-history-card p {
+  margin: 6px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.sea-history-card strong {
+  color: white;
+}
+
 /* Responsiveness */
 
 @media (max-width: 1100px) {
@@ -528,6 +701,31 @@ input {
 
   .result-item strong {
     text-align: left;
+  }
+
+  .sea-probability-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .sea-probability-row strong {
+    text-align: left;
+  }
+
+  .sea-history-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .sea-history-header .secondary-button {
+    margin-left: 0;
+    margin-right: 8px;
+    margin-top: 8px;
+  }
+
+  .sea-risk-box {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 
