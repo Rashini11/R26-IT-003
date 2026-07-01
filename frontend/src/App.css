@@ -414,6 +414,37 @@ input {
   gap: 14px;
 }
 
+.boat-summary-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 20px 22px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.24), rgba(45, 212, 191, 0.18));
+  border: 1px solid var(--border);
+}
+
+.boat-summary-card h3 {
+  margin: 6px 0 0;
+  font-size: 24px;
+}
+
+.confidence-badge {
+  padding: 12px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-weight: 900;
+  color: white;
+}
+
+.demo-button {
+  width: 100%;
+  margin-top: 10px;
+}
+
 .mini-card {
   padding: 20px;
   border-radius: 20px;

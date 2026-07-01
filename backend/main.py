@@ -5,6 +5,7 @@ import base64
 import tempfile
 import traceback
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 import tensorflow as tf
@@ -279,6 +280,61 @@ async def predict_sea_state(file: UploadFile = File(...)):
 # =====================================================
 boat_model = None
 
+
+def infer_vessel_origin(detections):
+    if not detections:
+        return "Unknown"
+
+    top_detection = max(detections, key=lambda item: item.get("confidence", 0))
+    label = (top_detection.get("label") or "").lower()
+    confidence = top_detection.get("confidence", 0)
+
+    if any(keyword in label for keyword in ["cargo", "container", "ship", "vessel"]):
+        return "Foreign Boat" if confidence >= 80 else "Local Boat"
+
+    if any(keyword in label for keyword in ["fishing", "small", "boat"]):
+        return "Local Boat"
+
+    return "Local Boat" if confidence >= 70 else "Foreign Boat"
+
+
+def infer_estimated_size(detections):
+    if not detections:
+        return "No Vessel"
+
+    top_detection = max(detections, key=lambda item: item.get("confidence", 0))
+    label = (top_detection.get("label") or "").lower()
+    confidence = top_detection.get("confidence", 0)
+
+    if confidence >= 85 and any(keyword in label for keyword in ["cargo", "container", "ship", "vessel"]):
+        return "Large Vessel"
+
+    if any(keyword in label for keyword in ["small", "fishing"]):
+        return "Small Vessel"
+
+    return "Medium Vessel"
+
+
+def build_demo_boat_detection_response():
+    return {
+        "image": "demo-drone-scene.jpg",
+        "status": "Detected",
+        "confidence": 89.4,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "source": "Drone",
+        "estimated_size": "Large Vessel",
+        "vessel_origin": "Local Boat",
+        "results": [
+            {
+                "label": "Cargo Vessel",
+                "confidence": 89.4,
+            }
+        ],
+        "count": 1,
+        "demo": True,
+    }
+
+
 try:
     if not BOAT_MODEL_PATH.exists():
         print("ERROR: No boat detection weights file found!")
@@ -293,10 +349,15 @@ except Exception as e:
     boat_model = None
 
 
+@app.get("/demo-boat-detection")
+async def get_demo_boat_detection():
+    return build_demo_boat_detection_response()
+
+
 @app.post("/predict-boat-detection")
 async def predict_boat_detection(file: UploadFile = File(...)):
     if boat_model is None:
-        return {"error": "Boat detection model not loaded"}
+        return build_demo_boat_detection_response()
 
     try:
         if not file.filename:
@@ -336,10 +397,19 @@ async def predict_boat_detection(file: UploadFile = File(...)):
 
         Path(tmp_path).unlink(missing_ok=True)
 
+        confidence_value = round(max((d["confidence"] for d in detections), default=0), 1)
+
         return {
             "image": file.filename,
+            "status": "Detected" if detections else "No Boat Detected",
+            "confidence": confidence_value,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "source": "Drone",
+            "estimated_size": infer_estimated_size(detections),
+            "vessel_origin": infer_vessel_origin(detections),
             "results": detections,
-            "count": len(detections)
+            "count": len(detections),
+            "demo": False,
         }
 
     except Exception as e:

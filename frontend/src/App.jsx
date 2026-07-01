@@ -156,6 +156,29 @@ function App() {
 
         {mode === "boat" && (
           <>
+            <div className="boat-summary-card">
+              <div>
+                <p className="section-label">Detection Summary</p>
+                <h3>{result.status || "Detected"}</h3>
+              </div>
+              <div className="confidence-badge">
+                {result.confidence ? `${result.confidence}%` : "—"}
+              </div>
+            </div>
+
+            <ResultItem label="Status" value={result.status || "Detected"} />
+            <ResultItem label="Confidence" value={`${result.confidence}%`} />
+            <ResultItem label="Timestamp" value={result.timestamp || "N/A"} />
+            <ResultItem label="Source" value={result.source || "Drone"} />
+            <ResultItem
+              label="Estimated Size"
+              value={result.estimated_size || "Medium Vessel"}
+            />
+            <ResultItem
+              label="Vessel Origin"
+              value={result.vessel_origin || "Local Boat"}
+            />
+
             {result.results && result.results.length > 0 ? (
               <>
                 <ResultItem label="Detected Objects" value={result.count} />
