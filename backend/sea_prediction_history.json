@@ -1,9 +1,10 @@
 [
     {
-        "timestamp": "2026-05-25 22:55:23",
+        "timestamp": "2026-08-03 10:08:14",
         "filename": "calm.JPG",
         "predicted_sea_state": "calm",
         "confidence": 100.0,
+        "processing_time": 0.315,
         "probabilities": {
             "calm": 100.0,
             "moderate": 0.0,
@@ -19,71 +20,65 @@
             "sharpness_status": "Good sharpness",
             "visibility_status": "Poor visibility"
         },
-        "enhancement_applied": true,
+        "enhancement_applied": false,
         "recommendation": {
             "risk_level": "Low",
             "message": "Normal sea condition detected. Navigation can continue under standard monitoring."
         },
+        "weather_suitability": {
+            "condition": "Moderate",
+            "score": 76,
+            "operations": [
+                "Navigation",
+                "Cargo Transport",
+                "Fishing",
+                "Patrol Boats"
+            ],
+            "reason": "Calm sea conditions with minimal wave activity. Marine operations can be performed safely. Image visibility is poor, reducing assessment reliability."
+        },
         "warnings": [
             "Image quality indicates poor visibility. Prediction may be less reliable."
         ]
     },
     {
-        "timestamp": "2026-05-25 22:55:48",
-        "filename": "r.JPG",
-        "predicted_sea_state": "rough",
-        "confidence": 99.98,
+        "timestamp": "2026-08-03 10:15:23",
+        "filename": "calm.JPG",
+        "predicted_sea_state": "calm",
+        "confidence": 100.0,
+        "processing_time": 0.467,
         "probabilities": {
-            "calm": 0.0,
-            "moderate": 0.02,
-            "rough": 99.98,
+            "calm": 100.0,
+            "moderate": 0.0,
+            "rough": 0.0,
             "very_rough": 0.0
         },
         "image_quality": {
-            "brightness_value": 96.02,
-            "contrast_value": 12.38,
-            "sharpness_value": 27.38,
+            "brightness_value": 133.05,
+            "contrast_value": 13.83,
+            "sharpness_value": 29.51,
             "brightness_status": "Normal",
             "contrast_status": "Low contrast / possible haze or fog",
             "sharpness_status": "Good sharpness",
             "visibility_status": "Poor visibility"
-        },
-        "enhancement_applied": true,
-        "recommendation": {
-            "risk_level": "High",
-            "message": "Rough sea condition detected. Navigation officers should reduce speed and monitor vessel stability."
-        },
-        "warnings": [
-            "Image quality indicates poor visibility. Prediction may be less reliable."
-        ]
-    },
-    {
-        "timestamp": "2026-07-29 00:46:46",
-        "filename": "c2.jfif",
-        "predicted_sea_state": "calm",
-        "confidence": 97.87,
-        "probabilities": {
-            "calm": 97.87,
-            "moderate": 1.51,
-            "rough": 0.11,
-            "very_rough": 0.51
-        },
-        "image_quality": {
-            "brightness_value": 119.26,
-            "contrast_value": 58.59,
-            "sharpness_value": 25.64,
-            "brightness_status": "Normal",
-            "contrast_status": "Good contrast",
-            "sharpness_status": "Good sharpness",
-            "visibility_status": "Clear visibility"
         },
         "enhancement_applied": false,
         "recommendation": {
             "risk_level": "Low",
             "message": "Normal sea condition detected. Navigation can continue under standard monitoring."
         },
+        "weather_suitability": {
+            "condition": "Moderate",
+            "score": 76,
+            "operations": [
+                "Navigation",
+                "Cargo Transport",
+                "Fishing",
+                "Patrol Boats"
+            ],
+            "reason": "Calm sea conditions with minimal wave activity. Marine operations can be performed safely. Image visibility is poor, reducing assessment reliability."
+        },
         "warnings": [
-            "Prediction confidence and image quality are acceptable."
+            "Image quality indicates poor visibility. Prediction may be less reliable."
         ]
     }
 ]

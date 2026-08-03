@@ -25,6 +25,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ultralytics import YOLO
 
+import time
+
 
 # =====================================================
 # FASTAPI APP
@@ -323,6 +325,104 @@ def get_sea_state_recommendation(sea_state: str):
         }
     )
 
+def get_weather_suitability(sea_state: str, confidence: float, visibility: str):
+    """
+    Calculates whether current sea conditions are suitable for marine operations.
+    """
+
+    if sea_state == "calm":
+        operations = [
+            "Navigation",
+            "Cargo Transport",
+            "Fishing",
+            "Patrol Boats"
+        ]
+        score = 96
+        condition = "Favorable"
+
+    elif sea_state == "moderate":
+        operations = [
+            "Navigation",
+            "Cargo Transport",
+            "Fishing"
+        ]
+        score = 74
+        condition = "Moderate"
+
+    elif sea_state == "rough":
+        operations = [
+            "Navigation with caution",
+            "Limited cargo operations"
+        ]
+        score = 42
+        condition = "Unfavorable"
+
+    else:   # very_rough
+        operations = [
+            "Emergency Operations Only"
+        ]
+        score = 12
+        condition = "Unfavorable"
+
+    # Reduce score based on image visibility
+    if visibility == "Moderate visibility":
+        score -= 10
+
+    elif visibility == "Poor visibility":
+        score -= 20
+
+    # Reduce score if AI confidence is low
+    if confidence < 70:
+        score -= 10
+
+    score = max(0, min(100, score))
+
+    if score >= 80:
+        condition = "Favorable"
+    elif score >= 55:
+        condition = "Moderate"
+    else:
+        condition = "Unfavorable"
+
+    if sea_state == "calm":
+        reason = (
+            "Calm sea conditions with minimal wave activity. "
+            "Marine operations can be performed safely."
+        )
+
+    elif sea_state == "moderate":
+        reason = (
+            "Moderate waves detected. Most marine operations remain possible "
+            "with normal precautions."
+        )
+
+    elif sea_state == "rough":
+        reason = (
+            "High wave activity detected. Operations should be limited due to "
+            "increased safety risks."
+        )
+
+    else:
+        reason = (
+            "Very rough sea conditions detected. Only emergency operations "
+            "should be considered."
+        )
+
+    if visibility == "Poor visibility":
+        reason += " Image visibility is poor, reducing assessment reliability."
+
+    elif visibility == "Moderate visibility":
+        reason += " Image visibility is moderate."
+
+    if confidence < 70:
+        reason += " AI prediction confidence is relatively low."
+
+    return {
+        "condition": condition,
+        "score": score,
+        "operations": operations,
+        "reason": reason
+    }
 
 def get_sea_confidence_warnings(confidence: float, visibility_status: str):
     warnings = []
@@ -370,6 +470,8 @@ async def predict_sea_state(
         return {"error": "Sea-state model not loaded"}
 
     try:
+        start_time = time.perf_counter()
+
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         file_path = os.path.join(UPLOAD_DIR, file.filename)
@@ -406,23 +508,34 @@ async def predict_sea_state(
             label = reverse_label_map[i]
             class_probabilities[label] = round(prob.item() * 100, 2)
 
+        weather_suitability = get_weather_suitability(
+            predicted_label,
+            round(confidence, 2),
+            quality_report["visibility_status"]
+        )
+
         recommendation = get_sea_state_recommendation(predicted_label)
         warnings = get_sea_confidence_warnings(
             round(confidence, 2),
             quality_report["visibility_status"]
         )
 
+        processing_time = round(time.perf_counter() - start_time, 3)
+
         result = {
             "timestamp": timestamp,
             "filename": file.filename,
             "predicted_sea_state": predicted_label,
             "confidence": round(confidence, 2),
+            "processing_time": processing_time,
             "probabilities": class_probabilities,
             "image_quality": quality_report,
             "enhancement_applied": apply_enhancement,
             "recommendation": recommendation,
+            "weather_suitability": weather_suitability,
             "warnings": warnings
         }
+        
 
         save_sea_history_record(result)
 
