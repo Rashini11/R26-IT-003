@@ -424,6 +424,81 @@ def get_weather_suitability(sea_state: str, confidence: float, visibility: str):
         "reason": reason
     }
 
+def calculate_risk_indicator(sea_state, confidence, image_quality):
+    """
+    Calculates overall operational risk using
+    sea state + confidence + image quality.
+    """
+
+    # Base score from sea state
+    base_scores = {
+        "calm": 20,
+        "moderate": 45,
+        "rough": 75,
+        "very_rough": 95
+    }
+
+    score = base_scores.get(sea_state, 50)
+    reasons = []
+
+    # -------------------------
+    # Confidence
+    # -------------------------
+
+    if confidence < 50:
+        score += 20
+        reasons.append("Low prediction confidence")
+
+    elif confidence < 70:
+        score += 10
+        reasons.append("Moderate prediction confidence")
+
+    # -------------------------
+    # Visibility
+    # -------------------------
+
+    visibility = image_quality["visibility_status"]
+
+    if visibility == "Poor visibility":
+        score += 10
+        reasons.append("Poor visibility")
+
+    # -------------------------
+    # Brightness
+    # -------------------------
+
+    if image_quality["brightness_status"] != "Normal":
+        score += 5
+        reasons.append("Suboptimal brightness")
+
+    # -------------------------
+    # Sharpness
+    # -------------------------
+
+    if image_quality["sharpness_status"] != "Good sharpness":
+        score += 5
+        reasons.append("Low image sharpness")
+
+    score = min(score, 100)
+
+    if score <= 25:
+        level = "Low"
+
+    elif score <= 50:
+        level = "Medium"
+
+    elif score <= 75:
+        level = "High"
+
+    else:
+        level = "Very High"
+
+    return {
+        "score": score,
+        "level": level,
+        "reasons": reasons
+    }
+
 def get_sea_confidence_warnings(confidence: float, visibility_status: str):
     warnings = []
 
@@ -499,8 +574,10 @@ async def predict_sea_state(
             confidence, predicted_class = torch.max(probabilities, 1)
 
         predicted_class = predicted_class.item()
-        confidence = confidence.item() * 100
         predicted_label = reverse_label_map[predicted_class]
+
+        confidence = confidence.item()
+        confidence_percent = round(confidence * 100, 2)
 
         class_probabilities = {}
 
@@ -510,31 +587,39 @@ async def predict_sea_state(
 
         weather_suitability = get_weather_suitability(
             predicted_label,
-            round(confidence, 2),
+            confidence_percent,
             quality_report["visibility_status"]
         )
 
+        risk_indicator = calculate_risk_indicator(
+            predicted_label,
+            confidence_percent,
+            quality_report
+        )
+
         recommendation = get_sea_state_recommendation(predicted_label)
+
         warnings = get_sea_confidence_warnings(
-            round(confidence, 2),
+            confidence_percent,
             quality_report["visibility_status"]
         )
 
         processing_time = round(time.perf_counter() - start_time, 3)
 
         result = {
-            "timestamp": timestamp,
-            "filename": file.filename,
-            "predicted_sea_state": predicted_label,
-            "confidence": round(confidence, 2),
-            "processing_time": processing_time,
-            "probabilities": class_probabilities,
-            "image_quality": quality_report,
-            "enhancement_applied": apply_enhancement,
-            "recommendation": recommendation,
-            "weather_suitability": weather_suitability,
-            "warnings": warnings
-        }
+                    "timestamp": timestamp,
+                    "filename": file.filename,
+                    "predicted_sea_state": predicted_label,
+                    "confidence": confidence_percent,
+                    "processing_time": processing_time,
+                    "probabilities": class_probabilities,
+                    "image_quality": quality_report,
+                    "enhancement_applied": apply_enhancement,
+                    "recommendation": recommendation,
+                    "weather_suitability": weather_suitability,
+                    "risk_indicator": risk_indicator,
+                    "warnings": warnings
+                }
         
 
         save_sea_history_record(result)
