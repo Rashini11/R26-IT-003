@@ -484,24 +484,57 @@ input {
   color: #ffffff;
 }
 
-.sea-risk-box {
-  margin: 18px 0;
-  padding: 16px 18px;
-  border-radius: 18px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid var(--border);
+.sea-risk-box{
+    margin:20px 0;
+    padding:22px;
+    border-radius:18px;
+    border:1px solid rgba(255,255,255,.1);
 }
 
-.sea-risk-box span {
-  color: rgba(255, 255, 255, 0.78);
-  font-weight: 800;
+.risk-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:18px;
 }
 
-.sea-risk-box strong {
-  font-size: 20px;
+.risk-header span{
+    color:#cfd8e5;
+    font-weight:700;
+    font-size:15px;
+}
+
+.risk-badge{
+    padding:8px 16px;
+    border-radius:999px;
+    font-weight:700;
+    color:white;
+    background:rgba(255,255,255,.15);
+}
+
+.risk-meter{
+    height:14px;
+    border-radius:999px;
+    overflow:hidden;
+    background:rgba(255,255,255,.12);
+}
+
+.risk-fill{
+    height:100%;
+    border-radius:999px;
+    background:linear-gradient(90deg,
+        #2ecc71,
+        #f1c40f,
+        #ff9800,
+        #ff3d3d);
+}
+
+.risk-footer{
+    display:flex;
+    justify-content:space-between;
+    margin-top:10px;
+    font-size:12px;
+    color:#bfc9d8;
 }
 
 .risk-low {
@@ -635,6 +668,86 @@ input {
   color: white;
 }
 
+.sea-weather{
+    margin-top:20px;
+}
+
+.sea-weather h4{
+    margin-top:18px;
+    margin-bottom:10px;
+}
+
+.sea-reason-box{
+    margin-top:20px;
+    padding:18px;
+    border-left:4px solid #3ec7ff;
+    background:#27313f;
+    border-radius:10px;
+}
+
+.sea-reason-box h4{
+    margin-bottom:10px;
+    color:#3ec7ff;
+}
+
+.sea-reason-box p{
+    line-height:1.7;
+    color:#d8e3ef;
+}
+
+.sea-weather .result-item{
+    padding:6px 0;
+}
+
+.weather-operations{
+    margin-top:20px;
+}
+
+.weather-operations h4{
+    margin-bottom:15px;
+}
+
+.weather-operation-badges{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:14px;
+    margin-top:18px;
+}
+
+.operation-badge{
+    display:flex;
+    align-items:center;
+    gap:8px;
+
+    padding:10px 18px;
+
+    border-radius:999px;
+
+    background:#24303f;
+    border:1px solid rgba(255,255,255,.08);
+
+    color:#fff;
+    font-weight:600;
+    font-size:15px;
+
+    transition:all .25s ease;
+}
+
+.operation-badge:hover{
+    transform:translateY(-2px);
+    background:#2d3b4d;
+    border-color:#39c5ff;
+}
+
+.badge-dot{
+    width:12px;
+    height:12px;
+    border-radius:50%;
+    background:#42d96b;
+    box-shadow:0 0 8px #42d96b;
+}
+
 /* Responsiveness */
 
 @media (max-width: 1100px) {
@@ -753,6 +866,7 @@ input {
     padding: 18px;
     border-radius: 20px;
   }
+
 }
 
 

@@ -147,6 +147,7 @@ function App() {
               label="Confidence"
               value={`${(result.confidence * 100).toFixed(2)}%`}
             />
+
             <ResultItem label="Recommendation" value={result.recommendation} />
             <ResultItem label="Warning" value={result.warning} />
 
@@ -182,16 +183,44 @@ function App() {
 
             <ResultItem label="Confidence" value={`${result.confidence}%`} />
 
-            {result.recommendation && (
-              <div
-                className={`sea-risk-box risk-${result.recommendation.risk_level
-                  ?.toLowerCase()
-                  .replace(" ", "-")}`}
-              >
-                <span>Risk Level</span>
-                <strong>{result.recommendation.risk_level}</strong>
+            {result.processing_time !== undefined && (
+              <div className="mini-card">
+                <span>Processing Time</span>
+                <strong>{result.processing_time} sec</strong>
               </div>
             )}
+
+            {result.recommendation && (
+              <div
+              className={`sea-risk-box risk-${result.recommendation.risk_level
+                ?.toLowerCase()
+                .replace(/\s+/g, "-")}`}
+              >
+              <div className="risk-header">
+                <span>Overall Risk</span>
+
+                <div className="risk-badge">
+                  {result.recommendation.risk_level}
+                </div>
+              </div>
+
+              <div className="risk-meter">
+                <div
+                  className="risk-fill"
+                  style={{
+                    width: `${result.weather_suitability?.score || result.confidence}%`,
+                  }}
+                ></div>
+              </div>
+
+              <div className="risk-footer">
+                <span>Low</span>
+                <span>Moderate</span>
+                <span>High</span>
+                <span>Extreme</span>
+              </div>
+            </div>
+          )}
 
             {result.probabilities && (
               <div className="probability-list">
@@ -243,6 +272,54 @@ function App() {
               <div className="sea-extra-section sea-recommendation">
                 <h3>Decision Support Recommendation</h3>
                 <p>{result.recommendation.message}</p>
+              </div>
+            )}
+
+            {result.weather_suitability && (
+              <div className="sea-extra-section sea-weather">
+                <h3>Weather Suitability</h3>
+
+                <ResultItem
+                  label="Weather Condition"
+                  value={result.weather_suitability.condition}
+                />
+
+                <div className="probability-list">
+                  <h4>Suitability Score</h4>
+
+                  <div className="sea-probability-row">
+                    <span>Score</span>
+
+                    <div className="sea-probability-bar">
+                      <div
+                        className="sea-probability-fill"
+                        style={{
+                          width: `${result.weather_suitability.score}%`,
+                        }}
+                      ></div>
+                    </div>
+
+                    <strong>{result.weather_suitability.score}/100</strong>
+                  </div>
+                </div>
+
+                <div className="weather-operations">
+                  <h4>Suitable Operations</h4>
+
+                  <div className="weather-operation-badges">
+                    {result.weather_suitability.operations.map((operation, index) => (
+                      <div className="operation-badge" key={index}>
+                        <span className="badge-dot"></span>
+                        <span>{operation}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="sea-reason-box">
+                    <h4>Reason</h4>
+                    <p>{result.weather_suitability.reason}</p>
+                </div>
               </div>
             )}
 
