@@ -181,7 +181,34 @@ function App() {
               <strong>{result.predicted_sea_state}</strong>
             </div>
 
-            <ResultItem label="Confidence" value={`${result.confidence}%`} />
+              <div className="confidence-gauge-card">
+
+                <h3>Confidence Gauge</h3>
+
+                <div className="confidence-value">
+                    {result.confidence}%
+                </div>
+
+                <div
+                    className="confidence-status"
+                    style={{ color: getConfidenceColor(result.confidence) }}
+                >
+                    {getConfidenceLabel(result.confidence)}
+                </div>
+
+                <div className="confidence-bar">
+
+                    <div
+                        className="confidence-progress"
+                        style={{
+                            width: `${result.confidence}%`,
+                            background: getConfidenceColor(result.confidence)
+                        }}
+                    ></div>
+
+                </div>
+
+            </div>
 
             {result.processing_time !== undefined && (
               <div className="mini-card">
@@ -527,6 +554,40 @@ function App() {
       </main>
     </div>
   );
+}
+
+function getConfidenceLabel(confidence) {
+
+  if (confidence >= 90)
+    return "Excellent Prediction Confidence";
+
+  if (confidence >= 75)
+    return "High Prediction Confidence";
+
+  if (confidence >= 60)
+    return "Moderate Prediction Confidence";
+
+  if (confidence >= 40)
+    return "Low Prediction Confidence";
+
+  return "Very Low Prediction Confidence";
+}
+
+function getConfidenceColor(confidence) {
+
+  if (confidence >= 90)
+    return "#22c55e";
+
+  if (confidence >= 75)
+    return "#3b82f6";
+
+  if (confidence >= 60)
+    return "#eab308";
+
+  if (confidence >= 40)
+    return "#f97316";
+
+  return "#ef4444";
 }
 
 function ResultItem({ label, value }) {

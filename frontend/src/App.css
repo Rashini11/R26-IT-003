@@ -866,6 +866,77 @@ input {
     padding: 18px;
     border-radius: 20px;
   }
+/* ===============================
+   Confidence Gauge
+================================*/
+
+.confidence-gauge-card{
+
+    margin-top:22px;
+
+    padding:24px;
+
+    border-radius:18px;
+
+    background:rgba(0,0,0,.18);
+
+    border:1px solid rgba(255,255,255,.08);
+
+    text-align:center;
+}
+
+.confidence-gauge-card h3{
+
+    margin-bottom:16px;
+
+    color:#38bdf8;
+}
+
+.confidence-value{
+
+    font-size:46px;
+
+    font-weight:800;
+
+    color:#38bdf8;
+
+    margin-bottom:8px;
+}
+
+.confidence-status{
+
+    margin-top:8px;
+
+    font-size:18px;
+
+    font-weight:700;
+
+    letter-spacing:.3px;
+
+    transition:.3s;
+}
+
+.confidence-bar{
+
+    width:100%;
+
+    height:18px;
+
+    border-radius:999px;
+
+    overflow:hidden;
+
+    background:rgba(255,255,255,.12);
+}
+
+.confidence-progress{
+
+    height:100%;
+
+    border-radius:999px;
+
+    transition:.6s ease;
+}
 
 }
 
