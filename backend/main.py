@@ -16,7 +16,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
-from torchvision.models import MobileNet_V2_Weights
+from torchvision.models import MobileNet_V2_Weights, mobilenet_v2
 from torchvision import transforms
 from PIL import Image, ImageStat, ImageEnhance, ImageFilter
 
@@ -236,6 +236,23 @@ except Exception as e:
     print("ERROR loading sea-state model:", e)
     sea_model = None
 
+# =====================================================
+# IMAGE VALIDATION MODEL (ImageNet MobileNet)
+# =====================================================
+
+validation_weights = MobileNet_V2_Weights.DEFAULT
+validation_model = mobilenet_v2(
+    weights=validation_weights
+).to(device)
+
+validation_model.eval()
+
+validation_transform = validation_weights.transforms()
+
+imagenet_classes = validation_weights.meta["categories"]
+
+print("Image validation model loaded successfully")
+
 
 # -----------------------------
 # Sea State Extra Features
@@ -296,6 +313,109 @@ def enhance_sea_image(image: Image.Image):
     image = ImageEnhance.Brightness(image).enhance(1.05)
     return image
 
+def validate_sea_image(image: Image.Image):
+    """
+    Validate whether the uploaded image is suitable
+    for sea-state classification.
+
+    Combines:
+    1. MobileNet scene/object understanding
+    2. Blue-color heuristic
+    """
+
+    if validation_model is None:
+        return {
+            "is_valid": True,
+            "message": "Image validator unavailable."
+        }
+
+    # ---------------------------------
+    # MobileNet Prediction
+    # ---------------------------------
+
+    input_tensor = validation_transform(image).unsqueeze(0).to(device)
+
+    with torch.no_grad():
+        output = validation_model(input_tensor)
+        probabilities = torch.softmax(output, dim=1)
+
+    top5_prob, top5_catid = torch.topk(probabilities, 5)
+
+    labels = MobileNet_V2_Weights.DEFAULT.meta["categories"]
+
+    top_predictions = []
+
+    for i in range(5):
+        label = labels[top5_catid[0][i].item()].lower()
+        score = top5_prob[0][i].item()
+
+        top_predictions.append((label, score))
+
+    # ---------------------------------
+    # Keywords that usually indicate
+    # marine/ocean scenes
+    # ---------------------------------
+
+    marine_keywords = [
+        "sea",
+        "ocean",
+        "coast",
+        "shore",
+        "beach",
+        "lakeside",
+        "harbor",
+        "pier",
+        "ship",
+        "boat",
+        "submarine",
+        "container ship",
+        "aircraft carrier",
+        "canoe",
+        "kayak",
+        "lifeboat",
+        "sailboat"
+    ]
+
+    mobilenet_detected = False
+
+    for label, score in top_predictions:
+        if any(word in label for word in marine_keywords):
+            mobilenet_detected = True
+            break
+
+    # ---------------------------------
+    # Blue Pixel Heuristic
+    # ---------------------------------
+
+    img = np.array(image.resize((224, 224)))
+
+    r = img[:, :, 0]
+    g = img[:, :, 1]
+    b = img[:, :, 2]
+
+    blue_pixels = np.sum(
+        (b > r + 20) &
+        (b > g + 20)
+    )
+
+    blue_ratio = blue_pixels / (224 * 224)
+
+    heuristic_pass = blue_ratio > 0.18
+
+    # ---------------------------------
+    # Final Decision
+    # ---------------------------------
+
+    if mobilenet_detected or heuristic_pass:
+        return {
+            "is_valid": True,
+            "message": "Ocean surface detected."
+        }
+
+    return {
+        "is_valid": False,
+        "message": "Uploaded image does not appear to contain a sea or ocean surface."
+    }
 
 def get_sea_state_recommendation(sea_state: str):
     recommendations_map = {
@@ -556,6 +676,17 @@ async def predict_sea_state(
 
         original_image = Image.open(file_path).convert("RGB")
 
+        # -----------------------------------------
+        # Validate uploaded image
+        # -----------------------------------------
+        validation = validate_sea_image(original_image)
+
+        if not validation["is_valid"]:
+            return {
+                "error": "Invalid image. Please upload an image that clearly shows the sea surface.",
+                "validation": validation
+            }
+
         quality_report = analyze_sea_image_quality(original_image)
 
         if apply_enhancement:
@@ -611,6 +742,7 @@ async def predict_sea_state(
                     "filename": file.filename,
                     "predicted_sea_state": predicted_label,
                     "confidence": confidence_percent,
+                    "validation": validation,
                     "processing_time": processing_time,
                     "probabilities": class_probabilities,
                     "image_quality": quality_report,
