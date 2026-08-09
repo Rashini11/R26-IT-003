@@ -784,5 +784,256 @@
         "warnings": [
             "Image quality indicates poor visibility. Prediction may be less reliable."
         ]
+    },
+    {
+        "timestamp": "2026-08-08 09:11:42",
+        "filename": "calm.JPG",
+        "predicted_sea_state": "calm",
+        "confidence": 100.0,
+        "validation": {
+            "is_valid": true,
+            "message": "Ocean surface detected."
+        },
+        "processing_time": 0.427,
+        "probabilities": {
+            "calm": 100.0,
+            "moderate": 0.0,
+            "rough": 0.0,
+            "very_rough": 0.0
+        },
+        "image_quality": {
+            "brightness_value": 133.05,
+            "contrast_value": 13.83,
+            "sharpness_value": 29.51,
+            "brightness_status": "Normal",
+            "contrast_status": "Low contrast / possible haze or fog",
+            "sharpness_status": "Good sharpness",
+            "visibility_status": "Poor visibility"
+        },
+        "enhancement_applied": false,
+        "recommendation": {
+            "risk_level": "Low",
+            "message": "Normal sea condition detected. Navigation can continue under standard monitoring."
+        },
+        "weather_suitability": {
+            "condition": "Moderate",
+            "score": 76,
+            "operations": [
+                "Navigation",
+                "Cargo Transport",
+                "Fishing",
+                "Patrol Boats"
+            ],
+            "reason": "Calm sea conditions with minimal wave activity. Marine operations can be performed safely. Image visibility is poor, reducing assessment reliability."
+        },
+        "risk_indicator": {
+            "score": 30,
+            "level": "Medium",
+            "reasons": [
+                "Poor visibility"
+            ]
+        },
+        "warnings": [
+            "Image quality indicates poor visibility. Prediction may be less reliable."
+        ]
+    },
+    {
+        "timestamp": "2026-08-08 09:16:12",
+        "filename": "m.JPG",
+        "predicted_sea_state": "moderate",
+        "confidence": 99.06,
+        "validation": {
+            "is_valid": true,
+            "message": "Ocean surface detected."
+        },
+        "processing_time": 0.47,
+        "probabilities": {
+            "calm": 0.81,
+            "moderate": 99.06,
+            "rough": 0.12,
+            "very_rough": 0.01
+        },
+        "image_quality": {
+            "brightness_value": 105.37,
+            "contrast_value": 25.66,
+            "sharpness_value": 41.79,
+            "brightness_status": "Normal",
+            "contrast_status": "Moderate contrast",
+            "sharpness_status": "Good sharpness",
+            "visibility_status": "Moderate visibility"
+        },
+        "enhancement_applied": false,
+        "recommendation": {
+            "risk_level": "Medium",
+            "message": "Moderate sea condition detected. Continue navigation with regular monitoring of wave changes."
+        },
+        "weather_suitability": {
+            "condition": "Moderate",
+            "score": 64,
+            "operations": [
+                "Navigation",
+                "Cargo Transport",
+                "Fishing"
+            ],
+            "reason": "Moderate waves detected. Most marine operations remain possible with normal precautions. Image visibility is moderate."
+        },
+        "risk_indicator": {
+            "score": 45,
+            "level": "Medium",
+            "reasons": []
+        },
+        "warnings": [
+            "Image quality is moderate. Prediction should be interpreted with caution."
+        ]
+    },
+    {
+        "timestamp": "2026-08-08 09:16:35",
+        "filename": "vr.JPG",
+        "predicted_sea_state": "very_rough",
+        "confidence": 98.38,
+        "validation": {
+            "is_valid": true,
+            "message": "Ocean surface detected."
+        },
+        "processing_time": 0.126,
+        "probabilities": {
+            "calm": 0.08,
+            "moderate": 0.35,
+            "rough": 1.2,
+            "very_rough": 98.38
+        },
+        "image_quality": {
+            "brightness_value": 116.32,
+            "contrast_value": 17.82,
+            "sharpness_value": 36.05,
+            "brightness_status": "Normal",
+            "contrast_status": "Low contrast / possible haze or fog",
+            "sharpness_status": "Good sharpness",
+            "visibility_status": "Poor visibility"
+        },
+        "enhancement_applied": false,
+        "recommendation": {
+            "risk_level": "Very High",
+            "message": "Very rough sea condition detected. High-risk condition. Extra caution and operational alerts are recommended."
+        },
+        "weather_suitability": {
+            "condition": "Unfavorable",
+            "score": 0,
+            "operations": [
+                "Emergency Operations Only"
+            ],
+            "reason": "Very rough sea conditions detected. Only emergency operations should be considered. Image visibility is poor, reducing assessment reliability."
+        },
+        "risk_indicator": {
+            "score": 100,
+            "level": "Very High",
+            "reasons": [
+                "Poor visibility"
+            ]
+        },
+        "warnings": [
+            "Image quality indicates poor visibility. Prediction may be less reliable."
+        ]
+    },
+    {
+        "timestamp": "2026-08-08 09:17:43",
+        "filename": "mod.JPG",
+        "predicted_sea_state": "moderate",
+        "confidence": 97.43,
+        "validation": {
+            "is_valid": true,
+            "message": "Ocean surface detected."
+        },
+        "processing_time": 0.167,
+        "probabilities": {
+            "calm": 0.57,
+            "moderate": 97.43,
+            "rough": 1.99,
+            "very_rough": 0.01
+        },
+        "image_quality": {
+            "brightness_value": 123.9,
+            "contrast_value": 12.12,
+            "sharpness_value": 31.88,
+            "brightness_status": "Normal",
+            "contrast_status": "Low contrast / possible haze or fog",
+            "sharpness_status": "Good sharpness",
+            "visibility_status": "Poor visibility"
+        },
+        "enhancement_applied": false,
+        "recommendation": {
+            "risk_level": "Medium",
+            "message": "Moderate sea condition detected. Continue navigation with regular monitoring of wave changes."
+        },
+        "weather_suitability": {
+            "condition": "Unfavorable",
+            "score": 54,
+            "operations": [
+                "Navigation",
+                "Cargo Transport",
+                "Fishing"
+            ],
+            "reason": "Moderate waves detected. Most marine operations remain possible with normal precautions. Image visibility is poor, reducing assessment reliability."
+        },
+        "risk_indicator": {
+            "score": 55,
+            "level": "High",
+            "reasons": [
+                "Poor visibility"
+            ]
+        },
+        "warnings": [
+            "Image quality indicates poor visibility. Prediction may be less reliable."
+        ]
+    },
+    {
+        "timestamp": "2026-08-08 19:33:54",
+        "filename": "c.JPG",
+        "predicted_sea_state": "calm",
+        "confidence": 99.97,
+        "validation": {
+            "is_valid": true,
+            "message": "Ocean surface detected."
+        },
+        "processing_time": 1.075,
+        "probabilities": {
+            "calm": 99.97,
+            "moderate": 0.03,
+            "rough": 0.0,
+            "very_rough": 0.0
+        },
+        "image_quality": {
+            "brightness_value": 118.73,
+            "contrast_value": 28.87,
+            "sharpness_value": 23.89,
+            "brightness_status": "Normal",
+            "contrast_status": "Moderate contrast",
+            "sharpness_status": "Good sharpness",
+            "visibility_status": "Moderate visibility"
+        },
+        "enhancement_applied": false,
+        "recommendation": {
+            "risk_level": "Low",
+            "message": "Normal sea condition detected. Navigation can continue under standard monitoring."
+        },
+        "weather_suitability": {
+            "condition": "Favorable",
+            "score": 86,
+            "operations": [
+                "Navigation",
+                "Cargo Transport",
+                "Fishing",
+                "Patrol Boats"
+            ],
+            "reason": "Calm sea conditions with minimal wave activity. Marine operations can be performed safely. Image visibility is moderate."
+        },
+        "risk_indicator": {
+            "score": 20,
+            "level": "Low",
+            "reasons": []
+        },
+        "warnings": [
+            "Image quality is moderate. Prediction should be interpreted with caution."
+        ]
     }
 ]
