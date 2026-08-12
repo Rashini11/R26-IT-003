@@ -406,6 +406,40 @@ input {
   letter-spacing: -0.04em;
 }
 
+.prediction-left{
+    display:flex;
+    flex-direction:column;
+}
+
+.prediction-confidence{
+    margin-top:14px;
+}
+
+.prediction-score{
+    font-size:18px;
+    font-weight:700;
+    color:#ffffff;
+}
+
+.prediction-label{
+    margin-top:6px;
+    font-size:15px;
+    font-weight:600;
+}
+
+.prediction-state{
+
+    margin-top:10px;
+
+    font-size:42px;
+
+    font-weight:800;
+
+    color:white;
+
+    letter-spacing:1px;
+}
+
 .model-output-grid,
 .detection-grid {
   margin-top: 20px;
@@ -936,6 +970,29 @@ input {
     border-radius:999px;
 
     transition:.6s ease;
+}
+
+.pdf-button {
+  width: 100%;
+  margin: 18px 0;
+  padding: 14px 20px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #38bdf8, #2dd4bf);
+  color: #07131f;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.pdf-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(45, 212, 191, 0.25);
+}
+
+.pdf-button:active {
+  transform: translateY(0);
 }
 
 }

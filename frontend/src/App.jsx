@@ -1,5 +1,6 @@
 import { useState } from "react";
 import axios from "axios";
+import { jsPDF } from "jspdf";
 import "./App.css";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
@@ -119,6 +120,444 @@ function App() {
     }
   };
 
+const generatePDF = () => {
+  if (!result) return;
+
+  const doc = new jsPDF();
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  const margin = 20;
+  const contentWidth = pageWidth - margin * 2;
+
+  let y = 20;
+
+  // =====================================================
+  // PAGE / POSITION HELPERS
+  // =====================================================
+
+  const checkPageSpace = (requiredSpace = 10) => {
+    if (y + requiredSpace > pageHeight - 25) {
+      addFooter();
+      doc.addPage();
+      y = 20;
+    }
+  };
+
+  const addFooter = () => {
+    const pageNumber = doc.internal.getNumberOfPages();
+
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+
+    doc.text(
+      "OceanIQ - Marine AI Inspection System",
+      margin,
+      pageHeight - 10
+    );
+
+    doc.text(
+      `Page ${pageNumber}`,
+      pageWidth - margin,
+      pageHeight - 10,
+      { align: "right" }
+    );
+  };
+
+  const addTitle = (title) => {
+    checkPageSpace(15);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(0, 120, 180);
+
+    doc.text(title, margin, y);
+
+    y += 8;
+  };
+
+  const addText = (text, indent = 0) => {
+    if (text === undefined || text === null) return;
+
+    const lines = doc.splitTextToSize(
+      String(text),
+      contentWidth - indent
+    );
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(30, 30, 30);
+
+    lines.forEach((line) => {
+      checkPageSpace(6);
+
+      doc.text(line, margin + indent, y);
+      y += 5.5;
+    });
+
+    y += 1;
+  };
+
+  const addKeyValue = (label, value) => {
+    checkPageSpace(8);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(30, 30, 30);
+
+    doc.text(`${label}:`, margin, y);
+
+    doc.setFont("helvetica", "normal");
+
+    const labelWidth = doc.getTextWidth(`${label}: `);
+
+    const lines = doc.splitTextToSize(
+      String(value ?? "N/A"),
+      contentWidth - labelWidth
+    );
+
+    doc.text(
+      lines[0],
+      margin + labelWidth,
+      y
+    );
+
+    y += 5.5;
+
+    // If the value wraps onto multiple lines
+    for (let i = 1; i < lines.length; i++) {
+      checkPageSpace(6);
+
+      doc.text(
+        lines[i],
+        margin + labelWidth,
+        y
+      );
+
+      y += 5.5;
+    }
+
+    y += 1;
+  };
+
+  const addBullet = (text) => {
+    const lines = doc.splitTextToSize(
+      String(text),
+      contentWidth - 8
+    );
+
+    lines.forEach((line, index) => {
+      checkPageSpace(6);
+
+      doc.text(
+        index === 0 ? `• ${line}` : `  ${line}`,
+        margin + 3,
+        y
+      );
+
+      y += 5.5;
+    });
+
+    y += 1;
+  };
+
+
+  // =====================================================
+  // HEADER
+  // =====================================================
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.setTextColor(20, 20, 20);
+
+  doc.text(
+    "Marine AI Inspection System",
+    pageWidth / 2,
+    y,
+    { align: "center" }
+  );
+
+  y += 9;
+
+  doc.setFontSize(15);
+  doc.setTextColor(0, 120, 180);
+
+  doc.text(
+    "Sea State Classification Report",
+    pageWidth / 2,
+    y,
+    { align: "center" }
+  );
+
+  y += 12;
+
+  doc.setDrawColor(0, 160, 200);
+  doc.line(margin, y, pageWidth - margin, y);
+
+  y += 10;
+
+
+  // =====================================================
+  // GENERAL INFORMATION
+  // =====================================================
+
+  addTitle("Prediction Information");
+
+  addKeyValue(
+    "File",
+    result.filename || "N/A"
+  );
+
+  addKeyValue(
+    "Timestamp",
+    result.timestamp || new Date().toLocaleString()
+  );
+
+  addKeyValue(
+    "Processing Time",
+    `${result.processing_time ?? "N/A"} sec`
+  );
+
+  addKeyValue(
+    "Enhancement Applied",
+    result.enhancement_applied ? "Yes" : "No"
+  );
+
+  y += 3;
+
+
+  // =====================================================
+  // SEA STATE RESULT
+  // =====================================================
+
+  addTitle("Sea State Classification");
+
+  checkPageSpace(20);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(17);
+  doc.setTextColor(20, 20, 20);
+
+  doc.text(
+    `Predicted Sea State: ${String(
+      result.predicted_sea_state || "N/A"
+    ).toUpperCase()}`,
+    margin,
+    y
+  );
+
+  y += 9;
+
+  doc.setFontSize(11);
+  doc.setTextColor(40, 40, 40);
+
+  doc.text(
+    `AI Confidence: ${result.confidence ?? 0}%`,
+    margin,
+    y
+  );
+
+  y += 8;
+
+
+  // =====================================================
+  // OVERALL RISK
+  // =====================================================
+
+  addTitle("Overall Risk");
+
+  const risk = result.risk_indicator;
+
+  addKeyValue(
+    "Risk Level",
+    risk?.level || "N/A"
+  );
+
+  addKeyValue(
+    "Risk Score",
+    `${risk?.score ?? "N/A"}/100`
+  );
+
+  if (risk?.reasons && risk.reasons.length > 0) {
+    addKeyValue(
+      "Risk Factors",
+      risk.reasons.join(", ")
+    );
+  } else {
+    addKeyValue(
+      "Risk Factors",
+      "None"
+    );
+  }
+
+  y += 3;
+
+
+  // =====================================================
+  // CLASS PROBABILITIES
+  // =====================================================
+
+  addTitle("Class Probabilities");
+
+  const probabilities = result.probabilities || {};
+
+  Object.entries(probabilities).forEach(([label, probability]) => {
+    addKeyValue(
+      label,
+      `${probability}%`
+    );
+  });
+
+  y += 3;
+
+
+  // =====================================================
+  // IMAGE QUALITY
+  // =====================================================
+
+  addTitle("Image Quality Analysis");
+
+  const quality = result.image_quality;
+
+  if (quality) {
+    addKeyValue(
+      "Brightness",
+      `${quality.brightness_status} (${quality.brightness_value})`
+    );
+
+    addKeyValue(
+      "Contrast",
+      `${quality.contrast_status} (${quality.contrast_value})`
+    );
+
+    addKeyValue(
+      "Sharpness",
+      `${quality.sharpness_status} (${quality.sharpness_value})`
+    );
+
+    addKeyValue(
+      "Visibility",
+      quality.visibility_status
+    );
+  }
+
+  addKeyValue(
+    "Enhancement Applied",
+    result.enhancement_applied ? "Yes" : "No"
+  );
+
+  y += 3;
+
+
+  // =====================================================
+  // DECISION SUPPORT
+  // =====================================================
+
+  addTitle("Decision Support Recommendation");
+
+  const recommendation = result.recommendation;
+
+  if (recommendation) {
+    addKeyValue(
+      "Risk Level",
+      recommendation.risk_level
+    );
+
+    addText(
+      recommendation.message
+    );
+  }
+
+
+  // =====================================================
+  // WEATHER SUITABILITY
+  // =====================================================
+
+  addTitle("Weather Suitability");
+
+  const weather = result.weather_suitability;
+
+  if (weather) {
+
+    addKeyValue(
+      "Condition",
+      weather.condition
+    );
+
+    addKeyValue(
+      "Suitability Score",
+      `${weather.score}/100`
+    );
+
+    if (
+      weather.operations &&
+      weather.operations.length > 0
+    ) {
+      checkPageSpace(8);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text(
+        "Suitable Operations:",
+        margin,
+        y
+      );
+
+      y += 6;
+
+      weather.operations.forEach((operation) => {
+        addBullet(operation);
+      });
+    }
+
+    if (weather.reason) {
+      addKeyValue(
+        "Reason",
+        weather.reason
+      );
+    }
+  }
+
+
+  // =====================================================
+  // SYSTEM WARNINGS
+  // =====================================================
+
+  addTitle("System Warnings");
+
+  if (
+    result.warnings &&
+    result.warnings.length > 0
+  ) {
+    result.warnings.forEach((warning) => {
+      addBullet(warning);
+    });
+  } else {
+    addText("No system warnings.");
+  }
+
+
+  // =====================================================
+  // FINAL FOOTER
+  // =====================================================
+
+  addFooter();
+
+
+  // =====================================================
+  // SAVE PDF
+  // =====================================================
+
+  const filename = result.filename
+    ? `Sea_State_Report_${result.filename
+        .replace(/\.[^/.]+$/, "")
+        .replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`
+    : "Sea_State_Prediction_Report.pdf";
+
+  doc.save(filename);
+};
+
   const renderResult = () => {
     if (!result) return null;
 
@@ -176,35 +615,28 @@ function App() {
 
         {mode === "sea" && (
           <>
-            <div className="final-prediction sea-final">
-              <span>Predicted Sea State</span>
-              <strong>{result.predicted_sea_state}</strong>
-            </div>
+            <div className="prediction-left">
 
-              <div className="confidence-gauge-card">
+                <span>Predicted Sea State</span>
 
-                <h3>Confidence Gauge</h3>
+                <strong className="prediction-state">
+                    {result.predicted_sea_state}
+                </strong>
 
-                <div className="confidence-value">
-                    {result.confidence}%
+                <div className="prediction-confidence">
+
+                <div className="prediction-score">
+                    AI Confidence • {result.confidence}%
                 </div>
-
-                <div
-                    className="confidence-status"
-                    style={{ color: getConfidenceColor(result.confidence) }}
-                >
-                    {getConfidenceLabel(result.confidence)}
-                </div>
-
-                <div className="confidence-bar">
 
                     <div
-                        className="confidence-progress"
+                        className="prediction-label"
                         style={{
-                            width: `${result.confidence}%`,
-                            background: getConfidenceColor(result.confidence)
+                            color: getConfidenceColor(result.confidence)
                         }}
-                    ></div>
+                    >
+                        {getConfidenceLabel(result.confidence)}
+                    </div>
 
                 </div>
 
@@ -248,6 +680,13 @@ function App() {
               </div>
             </div>
           )}
+
+          <button
+            className="pdf-button"
+            onClick={generatePDF}
+          >
+            📄 Download Prediction Report
+          </button>
 
             {result.probabilities && (
               <div className="probability-list">
