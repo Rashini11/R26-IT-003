@@ -30,6 +30,7 @@ runs/
 
 # Dataset caches
 *.cache
+.env
 
 # Downloaded pretrained/base weights
 yolo11n-cls.pt
