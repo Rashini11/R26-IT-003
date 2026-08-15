@@ -25,6 +25,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ultralytics import YOLO
 
+from dotenv import load_dotenv
+from pymongo import MongoClient
+
 import time
 
 
@@ -71,7 +74,6 @@ HULL_MODEL_PATH = os.path.join(BASE_DIR, "model", "hull_model.keras")
 
 SEA_MODEL_PATH = os.path.join(BASE_DIR, "model", "image_only_model.pth")
 LABEL_MAP_PATH = os.path.join(BASE_DIR, "model", "label_map.json")
-SEA_HISTORY_FILE = os.path.join(BASE_DIR, "backend", "sea_prediction_history.json")
 
 BOAT_MODEL_PATH = BASE_PATH / "model" / "boat_detection.pt"
 if not BOAT_MODEL_PATH.exists():
@@ -80,6 +82,35 @@ if not BOAT_MODEL_PATH.exists():
 RADAR_YOLO_MODEL_PATH = BASE_PATH / "ml" / "models" / "final" / "yolo11_medium_best.pt"
 RADAR_CNN_MODEL_PATH = BASE_PATH / "ml" / "models" / "final" / "deepercnn_best.pth"
 
+# =====================================================
+# MONGODB CONNECTION
+# =====================================================
+
+load_dotenv()
+
+MONGO_URI = os.getenv("MONGO_URI")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "marine_ai_db")
+
+mongo_client = MongoClient(MONGO_URI)
+
+mongo_db = mongo_client[MONGO_DB_NAME]
+
+try:
+    mongo_client.admin.command("ping")
+    print("MongoDB connected successfully!")
+except Exception as e:
+    print("MongoDB connection failed:", e)
+
+# =====================================================
+# MONGODB COLLECTIONS
+# =====================================================
+
+sea_state_collection = mongo_db["sea_state_predictions"]
+hull_defect_collection = mongo_db["hull_defect_predictions"]
+boat_detection_collection = mongo_db["boat_detections"]
+radar_prediction_collection = mongo_db["radar_predictions"]
+
+print("MongoDB collections initialized")
 
 # =====================================================
 # HULL DEFECT MODEL - TENSORFLOW
@@ -136,6 +167,7 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None
     heatmap = heatmap / (tf.reduce_max(heatmap) + 1e-8)
 
     return heatmap.numpy()
+
 
 
 @app.post("/predict-hull-defect")
@@ -636,24 +668,24 @@ def get_sea_confidence_warnings(confidence: float, visibility_status: str):
 
     return warnings
 
-
-def load_sea_history():
-    if not os.path.exists(SEA_HISTORY_FILE):
-        return []
-
-    try:
-        with open(SEA_HISTORY_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+# =====================================================
+# SEA STATE MONGODB HISTORY
+# =====================================================
 
 
 def save_sea_history_record(record):
-    history = load_sea_history()
-    history.append(record)
+    try:
+        # Make a copy so MongoDB operations don't affect the response object
+        record_to_save = record.copy()
 
-    with open(SEA_HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, indent=4)
+        result = sea_state_collection.insert_one(record_to_save)
+
+        print("Sea-state prediction saved to MongoDB")
+        return str(result.inserted_id)
+
+    except Exception as e:
+        print("Error saving sea-state prediction:", e)
+        return None
 
 
 @app.post("/predict-sea-state")
@@ -765,19 +797,45 @@ async def predict_sea_state(
 
 @app.get("/sea-state-history")
 def get_sea_state_history():
-    return {
-        "history": load_sea_history()
-    }
+    try:
+        history = list(
+            sea_state_collection
+            .find({}, {"_id": 0})
+            .sort("timestamp", -1)
+        )
+
+        return {
+            "history": history
+        }
+
+    except Exception as e:
+        print("Error loading sea-state history:", e)
+
+        return {
+            "error": f"Failed to load history: {str(e)}",
+            "history": []
+        }
 
 
 @app.delete("/sea-state-history")
 def clear_sea_state_history():
-    with open(SEA_HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump([], f, indent=4)
+    try:
+        result = sea_state_collection.delete_many({})
 
-    return {
-        "message": "Sea-state prediction history cleared successfully"
-    }
+        return {
+            "message": "Sea-state prediction history cleared successfully",
+            "deleted_count": result.deleted_count
+        }
+
+    except Exception as e:
+        print("Error clearing sea-state history:", e)
+
+        return {
+            "error": f"Failed to clear sea-state prediction history: {str(e)}"
+        }
+
+
+
 
 
 # =====================================================
