@@ -10,9 +10,8 @@ from PIL import Image
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
 
-# -----------------------------
 # Settings
-# -----------------------------
+
 DATASET_FILE = "dataset.csv"
 
 MODEL_SAVE_PATH = "model/image_only_model.pth"
@@ -26,9 +25,8 @@ LEARNING_RATE = 0.001
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
 
-# -----------------------------
 # Load dataset
-# -----------------------------
+
 df = pd.read_csv(DATASET_FILE)
 
 if len(df) > SAMPLE_SIZE:
@@ -36,9 +34,8 @@ if len(df) > SAMPLE_SIZE:
 
 print("Dataset size:", len(df))
 
-# -----------------------------
 # Encode labels
-# -----------------------------
+
 labels = sorted(df["label"].unique())
 label_map = {label: i for i, label in enumerate(labels)}
 reverse_label_map = {i: label for label, i in label_map.items()}
@@ -47,9 +44,8 @@ df["label_encoded"] = df["label"].map(label_map)
 
 print("Label map:", label_map)
 
-# -----------------------------
 # Train / Validation / Test Split
-# -----------------------------
+
 train_df, temp_df = train_test_split(
     df,
     test_size=0.30,
@@ -66,17 +62,15 @@ val_df, test_df = train_test_split(
 
 print("Train:", len(train_df), "Val:", len(val_df), "Test:", len(test_df))
 
-# -----------------------------
 # Image Transform
-# -----------------------------
+
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
 ])
 
-# -----------------------------
 # Dataset Class - Image Only
-# -----------------------------
+
 class SeaImageDataset(torch.utils.data.Dataset):
     def __init__(self, dataframe):
         self.df = dataframe.reset_index(drop=True)
@@ -99,9 +93,8 @@ class SeaImageDataset(torch.utils.data.Dataset):
 
         return image, label
 
-# -----------------------------
 # DataLoaders
-# -----------------------------
+
 train_loader = torch.utils.data.DataLoader(
     SeaImageDataset(train_df),
     batch_size=BATCH_SIZE,
@@ -123,9 +116,8 @@ test_loader = torch.utils.data.DataLoader(
     num_workers=0
 )
 
-# -----------------------------
 # Image Only MobileNet Model
-# -----------------------------
+
 class ImageOnlyMobileNet(nn.Module):
     def __init__(self, num_classes):
         super().__init__()
@@ -138,15 +130,13 @@ class ImageOnlyMobileNet(nn.Module):
 
 model = ImageOnlyMobileNet(num_classes=len(labels)).to(device)
 
-# -----------------------------
 # Training Setup
-# -----------------------------
+
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-# -----------------------------
 # Evaluation Function
-# -----------------------------
+
 def evaluate(loader):
     model.eval()
 
@@ -173,9 +163,8 @@ def evaluate(loader):
 
     return accuracy, all_labels, all_preds
 
-# -----------------------------
 # Training Loop
-# -----------------------------
+
 best_val_accuracy = 0.0
 
 for epoch in range(EPOCHS):
@@ -207,9 +196,8 @@ for epoch in range(EPOCHS):
         torch.save(model.state_dict(), MODEL_SAVE_PATH)
         print("💾 Best image-only model saved!")
 
-# -----------------------------
 # Final Test Evaluation
-# -----------------------------
+
 print("\n📊 Testing best image-only model...")
 
 model.load_state_dict(torch.load(MODEL_SAVE_PATH, map_location=device))
@@ -230,9 +218,8 @@ print("\n✅ Final Image-Only Test Accuracy:", round(test_accuracy * 100, 2), "%
 print("\nClassification Report:\n", report)
 print("\nConfusion Matrix:\n", cm)
 
-# -----------------------------
 # Save Report
-# -----------------------------
+
 with open(REPORT_SAVE_PATH, "w", encoding="utf-8") as f:
     f.write("IMAGE-ONLY SEA STATE CLASSIFICATION REPORT\n")
     f.write("==========================================\n\n")

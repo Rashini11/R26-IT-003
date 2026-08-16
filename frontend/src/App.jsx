@@ -14,6 +14,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
+import { jsPDF } from "jspdf";
 import {
   Anchor,
   Waves,
@@ -39,6 +40,8 @@ import {
   Navigation,
 } from "lucide-react";
 import LiveSimulation from "./LiveSimulation";
+import ProtectedRoute from "./components/ProtectedRoute";
+import LogoutButton from "./components/LogoutButton";
 import "./App.css";
 
 /* ══════════════════════════════════════════════════════════
@@ -320,7 +323,7 @@ function ProbBar({ label, value, color }) {
 /* ══════════════════════════════════════════════════════════
    MAIN APP COMPONENT
    ══════════════════════════════════════════════════════════ */
-export default function App() {
+function AppContent() {
 
   /* ── Application state ── */
   const [activeModule, setActiveModule] = useState("hull");
@@ -331,9 +334,34 @@ export default function App() {
   const [showGradcam, setShowGradcam] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile sidebar toggle
+  const [applyEnhancement, setApplyEnhancement] = useState(false);
+  const [seaHistory, setSeaHistory] = useState([]);
+  const [seaHistoryLoading, setSeaHistoryLoading] = useState(false);
 
   const mod = MODULES[activeModule];
   const ModIcon = mod.icon;
+
+  /* ── Sea-state history helpers ── */
+  const fetchSeaHistory = useCallback(async () => {
+    try {
+      setSeaHistoryLoading(true);
+      const { data } = await axios.get(`${API_BASE_URL}/sea-state-history`);
+      setSeaHistory(data.history || []);
+    } catch (error) {
+      console.error("Failed to load sea-state history:", error);
+    } finally {
+      setSeaHistoryLoading(false);
+    }
+  }, []);
+
+  const clearSeaHistory = async () => {
+    try {
+      await axios.delete(`${API_BASE_URL}/sea-state-history`);
+      setSeaHistory([]);
+    } catch (error) {
+      console.error("Failed to clear sea-state history:", error);
+    }
+  };
 
   /* ── File selection handler ── */
   const processFile = useCallback((f) => {
@@ -360,7 +388,9 @@ export default function App() {
     setPreview(null);
     setResult(null);
     setShowGradcam(false);
+    setApplyEnhancement(false);
     setSidebarOpen(false);
+    if (id === "sea") fetchSeaHistory();
   };
 
   /* ══════════════════════════════════════════════
@@ -373,13 +403,21 @@ export default function App() {
     if (!file || loading) return;
     const form = new FormData();
     form.append("file", file);
+    if (activeModule === "sea") {
+      form.append("apply_enhancement", applyEnhancement);
+    }
     try {
       setLoading(true);
       setResult(null);
       const { data } = await axios.post(mod.endpoint, form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setResult(data);
+      if (data?.error) {
+        setResult({ __error: true, message: data.error, details: data.validation });
+      } else {
+        setResult(data);
+      }
+      if (activeModule === "sea") fetchSeaHistory();
     } catch (err) {
       console.error("Prediction error:", err);
       setResult({
@@ -389,6 +427,159 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  /* ── Sea-state PDF report from the Sea-State branch ── */
+  const generateSeaStatePDF = () => {
+    if (!result || activeModule !== "sea" || result.__error) return;
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 20;
+    const contentWidth = pageWidth - margin * 2;
+    let y = 20;
+
+    const addFooter = () => {
+      const pageNumber = doc.internal.getNumberOfPages();
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.text("OceanIQ - Marine AI Intelligence Platform", margin, pageHeight - 10);
+      doc.text(`Page ${pageNumber}`, pageWidth - margin, pageHeight - 10, { align: "right" });
+    };
+
+    const checkPageSpace = (requiredSpace = 10) => {
+      if (y + requiredSpace > pageHeight - 25) {
+        addFooter();
+        doc.addPage();
+        y = 20;
+      }
+    };
+
+    const addTitle = (title) => {
+      checkPageSpace(15);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(0, 120, 180);
+      doc.text(title, margin, y);
+      y += 8;
+    };
+
+    const addText = (text, indent = 0) => {
+      if (text === undefined || text === null) return;
+      const lines = doc.splitTextToSize(String(text), contentWidth - indent);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(30, 30, 30);
+      lines.forEach((line) => {
+        checkPageSpace(6);
+        doc.text(line, margin + indent, y);
+        y += 5.5;
+      });
+      y += 1;
+    };
+
+    const addKeyValue = (label, value) => {
+      checkPageSpace(8);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(30, 30, 30);
+      doc.text(`${label}:`, margin, y);
+      doc.setFont("helvetica", "normal");
+      const labelWidth = doc.getTextWidth(`${label}: `);
+      const lines = doc.splitTextToSize(String(value ?? "N/A"), contentWidth - labelWidth);
+      doc.text(lines[0], margin + labelWidth, y);
+      y += 5.5;
+      for (let i = 1; i < lines.length; i += 1) {
+        checkPageSpace(6);
+        doc.text(lines[i], margin + labelWidth, y);
+        y += 5.5;
+      }
+      y += 1;
+    };
+
+    const addBullet = (text) => {
+      const lines = doc.splitTextToSize(String(text), contentWidth - 8);
+      lines.forEach((line, index) => {
+        checkPageSpace(6);
+        doc.text(index === 0 ? `• ${line}` : `  ${line}`, margin + 3, y);
+        y += 5.5;
+      });
+      y += 1;
+    };
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.setTextColor(20, 20, 20);
+    doc.text("OceanIQ Marine AI Intelligence Platform", pageWidth / 2, y, { align: "center" });
+    y += 9;
+    doc.setFontSize(15);
+    doc.setTextColor(0, 120, 180);
+    doc.text("Sea State Classification Report", pageWidth / 2, y, { align: "center" });
+    y += 12;
+    doc.setDrawColor(0, 160, 200);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 10;
+
+    addTitle("Prediction Information");
+    addKeyValue("File", result.filename || "N/A");
+    addKeyValue("Timestamp", result.timestamp || new Date().toLocaleString());
+    addKeyValue("Processing Time", `${result.processing_time ?? "N/A"} sec`);
+    addKeyValue("Enhancement Applied", result.enhancement_applied ? "Yes" : "No");
+    y += 3;
+
+    addTitle("Sea State Classification");
+    addKeyValue("Predicted Sea State", String(result.predicted_sea_state || "N/A").toUpperCase());
+    addKeyValue("AI Confidence", `${result.confidence ?? 0}%`);
+    y += 3;
+
+    addTitle("Overall Risk");
+    addKeyValue("Risk Level", result.risk_indicator?.level || "N/A");
+    addKeyValue("Risk Score", `${result.risk_indicator?.score ?? "N/A"}/100`);
+    addKeyValue("Risk Factors", result.risk_indicator?.reasons?.length ? result.risk_indicator.reasons.join(", ") : "None");
+    y += 3;
+
+    addTitle("Class Probabilities");
+    Object.entries(result.probabilities || {}).forEach(([label, probability]) => {
+      addKeyValue(label, `${probability}%`);
+    });
+    y += 3;
+
+    addTitle("Image Quality Analysis");
+    if (result.image_quality) {
+      addKeyValue("Brightness", `${result.image_quality.brightness_status} (${result.image_quality.brightness_value})`);
+      addKeyValue("Contrast", `${result.image_quality.contrast_status} (${result.image_quality.contrast_value})`);
+      addKeyValue("Sharpness", `${result.image_quality.sharpness_status} (${result.image_quality.sharpness_value})`);
+      addKeyValue("Visibility", result.image_quality.visibility_status);
+    }
+    y += 3;
+
+    addTitle("Decision Support Recommendation");
+    if (result.recommendation) {
+      addKeyValue("Risk Level", result.recommendation.risk_level);
+      addText(result.recommendation.message);
+    }
+
+    addTitle("Weather Suitability");
+    if (result.weather_suitability) {
+      addKeyValue("Condition", result.weather_suitability.condition);
+      addKeyValue("Suitability Score", `${result.weather_suitability.score}/100`);
+      if (result.weather_suitability.operations?.length) {
+        addText("Suitable Operations:");
+        result.weather_suitability.operations.forEach(addBullet);
+      }
+      addKeyValue("Reason", result.weather_suitability.reason);
+    }
+
+    addTitle("System Warnings");
+    if (result.warnings?.length) result.warnings.forEach(addBullet);
+    else addText("No system warnings.");
+
+    addFooter();
+    const filename = result.filename
+      ? `Sea_State_Report_${result.filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`
+      : "Sea_State_Prediction_Report.pdf";
+    doc.save(filename);
   };
 
   /* ══════════════════════════════════════════════
@@ -487,7 +678,28 @@ export default function App() {
               <ConfidenceRing value={parseFloat(result.confidence)} color={mod.color} />
             </div>
 
-            {/* Probability distribution bars */}
+            <div className="sea-meta-grid">
+              <DataRow label="PROCESSING TIME" value={`${result.processing_time ?? "N/A"} sec`} />
+              <DataRow label="ENHANCEMENT" value={result.enhancement_applied ? "Applied" : "Not applied"} />
+              <DataRow label="VALIDATION" value={result.validation?.message || "N/A"} />
+            </div>
+
+            {result.risk_indicator && (
+              <div className={`sea-risk-card risk-${String(result.risk_indicator.level || "unknown").toLowerCase().replaceAll(" ", "-")}`}>
+                <div className="sea-risk-topline">
+                  <span>OPERATIONAL RISK</span>
+                  <strong>{result.risk_indicator.level}</strong>
+                </div>
+                <div className="sea-risk-track">
+                  <div className="sea-risk-fill" style={{ width: `${result.risk_indicator.score || 0}%` }} />
+                </div>
+                <div className="sea-risk-score">{result.risk_indicator.score}/100</div>
+                {result.risk_indicator.reasons?.length > 0 && (
+                  <p className="sea-support-text">Factors: {result.risk_indicator.reasons.join(", ")}</p>
+                )}
+              </div>
+            )}
+
             {result.probabilities && (
               <div className="prob-section">
                 <p className="prob-title"><BarChart2 size={13} /> CLASS PROBABILITY DISTRIBUTION</p>
@@ -496,6 +708,88 @@ export default function App() {
                 ))}
               </div>
             )}
+
+            {result.image_quality && (
+              <div className="sea-feature-card">
+                <p className="sea-feature-title">IMAGE QUALITY ANALYSIS</p>
+                <div className="sea-kv-grid">
+                  <DataRow label="BRIGHTNESS" value={`${result.image_quality.brightness_status} (${result.image_quality.brightness_value})`} />
+                  <DataRow label="CONTRAST" value={`${result.image_quality.contrast_status} (${result.image_quality.contrast_value})`} />
+                  <DataRow label="SHARPNESS" value={`${result.image_quality.sharpness_status} (${result.image_quality.sharpness_value})`} />
+                  <DataRow label="VISIBILITY" value={result.image_quality.visibility_status} />
+                </div>
+              </div>
+            )}
+
+            {result.recommendation && (
+              <div className="sea-feature-card">
+                <p className="sea-feature-title">DECISION SUPPORT RECOMMENDATION</p>
+                <div className="sea-recommendation-row">
+                  <span className="sea-level-badge">{result.recommendation.risk_level}</span>
+                  <p>{result.recommendation.message}</p>
+                </div>
+              </div>
+            )}
+
+            {result.weather_suitability && (
+              <div className="sea-feature-card">
+                <p className="sea-feature-title">MARINE OPERATION SUITABILITY</p>
+                <div className="sea-suitability-head">
+                  <strong>{result.weather_suitability.condition}</strong>
+                  <span>{result.weather_suitability.score}/100</span>
+                </div>
+                <div className="sea-risk-track">
+                  <div className="sea-suitability-fill" style={{ width: `${result.weather_suitability.score}%` }} />
+                </div>
+                <div className="sea-operation-badges">
+                  {result.weather_suitability.operations?.map((operation) => (
+                    <span key={operation}>{operation}</span>
+                  ))}
+                </div>
+                <p className="sea-support-text">{result.weather_suitability.reason}</p>
+              </div>
+            )}
+
+            {result.warnings?.length > 0 && (
+              <div className="sea-feature-card sea-warning-card">
+                <p className="sea-feature-title">SYSTEM WARNINGS</p>
+                {result.warnings.map((warning, index) => (
+                  <p className="sea-warning-line" key={`${warning}-${index}`}>
+                    <AlertTriangle size={13} /> {warning}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            <button className="sea-pdf-btn" onClick={generateSeaStatePDF}>
+              DOWNLOAD SEA-STATE PDF REPORT
+            </button>
+
+            <div className="sea-history-section">
+              <div className="sea-history-header">
+                <p className="sea-feature-title">SEA-STATE PREDICTION HISTORY</p>
+                <div className="sea-history-actions">
+                  <button onClick={fetchSeaHistory} disabled={seaHistoryLoading}>
+                    {seaHistoryLoading ? "LOADING…" : "REFRESH"}
+                  </button>
+                  <button className="danger" onClick={clearSeaHistory}>CLEAR</button>
+                </div>
+              </div>
+              {seaHistory.length === 0 ? (
+                <p className="sea-history-empty">No sea-state prediction history available.</p>
+              ) : (
+                <div className="sea-history-grid">
+                  {seaHistory.slice(0, 6).map((item, index) => (
+                    <div className="sea-history-card" key={`${item.timestamp}-${item.filename}-${index}`}>
+                      <span>{item.timestamp}</span>
+                      <strong>{item.predicted_sea_state}</strong>
+                      <p>{item.filename}</p>
+                      <p>{item.confidence}% confidence · {item.recommendation?.risk_level || "Unknown"} risk</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -697,6 +991,7 @@ export default function App() {
           <div className="cb-badges">
             <div className="badge-live"><span className="live-dot" />LIVE</div>
             <div className="badge-secure"><Shield size={12} />SECURE</div>
+            <LogoutButton />
           </div>
         </header>
 
@@ -747,6 +1042,17 @@ export default function App() {
                 </div>
               )}
             </label>
+
+            {activeModule === "sea" && (
+              <label className="sea-enhancement-toggle">
+                <input
+                  type="checkbox"
+                  checked={applyEnhancement}
+                  onChange={(e) => setApplyEnhancement(e.target.checked)}
+                />
+                <span>Apply image enhancement before prediction</span>
+              </label>
+            )}
 
             <button
               className="run-btn"
@@ -848,3 +1154,13 @@ export default function App() {
     </div>
   );
 }
+
+function App() {
+  return (
+    <ProtectedRoute>
+      <AppContent />
+    </ProtectedRoute>
+  );
+}
+
+export default App;

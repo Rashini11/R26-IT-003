@@ -1368,3 +1368,156 @@ p { margin: 0; }
 .sim-notice { display: flex; align-items: center; gap: 7px; color: var(--text-300); font-family: var(--font-mono); font-size: 9px; padding: 0 3px; }
 @media (max-width: 1120px) { .sim-top-grid { grid-template-columns: 1fr 1fr; } .sim-radar-card { grid-column: span 2; } }
 @media (max-width: 760px) { .simulation-page { padding: 14px; } .sim-top-grid, .sim-vessel-grid { grid-template-columns: 1fr; } .sim-radar-card { grid-column: auto; } .sim-control-bar label, .sim-control-bar select { width: 100%; } .sim-button { flex: 1; justify-content: center; } }
+
+
+/* ═══════════════════════════════════════════════════════════
+   SEA-STATE ADVANCED FEATURES — integrated from
+   Sea-State-Classification without restoring the legacy UI.
+   ═══════════════════════════════════════════════════════════ */
+.sea-enhancement-toggle {
+  margin-top: 12px;
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  color: var(--text-200);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .03em;
+  cursor: pointer;
+}
+.sea-enhancement-toggle input { accent-color: var(--success); }
+.sea-meta-grid { margin-top: 12px; }
+.sea-feature-card,
+.sea-risk-card,
+.sea-history-section {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--r-sm);
+  background: rgba(5, 20, 33, .72);
+}
+.sea-feature-title {
+  margin: 0 0 10px;
+  color: var(--success);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+.sea-risk-topline,
+.sea-suitability-head,
+.sea-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.sea-risk-topline span,
+.sea-risk-score,
+.sea-suitability-head span {
+  color: var(--text-200);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.sea-risk-topline strong,
+.sea-suitability-head strong { color: var(--text-100); }
+.sea-risk-track {
+  height: 7px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+}
+.sea-risk-fill,
+.sea-suitability-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #00ffb3, #facc15, #f97316, #ff4d6d);
+}
+.sea-suitability-fill { background: linear-gradient(90deg, #00d4ff, #00ffb3); }
+.sea-risk-score { margin-top: 6px; text-align: right; }
+.sea-kv-grid .data-row { margin-top: 5px; }
+.sea-recommendation-row { display: flex; gap: 10px; align-items: flex-start; }
+.sea-recommendation-row p,
+.sea-support-text,
+.sea-warning-line,
+.sea-history-card p,
+.sea-history-empty {
+  color: var(--text-200);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.sea-level-badge {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(0,255,179,.35);
+  color: var(--success);
+  background: rgba(0,255,179,.08);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+.sea-operation-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 11px 0;
+}
+.sea-operation-badges span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-hi);
+  background: rgba(0,212,255,.06);
+  color: var(--text-100);
+  font-size: 10px;
+}
+.sea-warning-card { border-color: rgba(249,115,22,.35); background: rgba(249,115,22,.06); }
+.sea-warning-line { display: flex; gap: 7px; align-items: flex-start; margin-top: 7px; color: #ffc08d; }
+.sea-pdf-btn {
+  width: 100%;
+  margin-top: 16px;
+  padding: 11px 12px;
+  border: 1px solid rgba(0,255,179,.35);
+  border-radius: var(--r-xs);
+  background: rgba(0,255,179,.10);
+  color: var(--success);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  cursor: pointer;
+}
+.sea-pdf-btn:hover { background: rgba(0,255,179,.17); }
+.sea-history-actions { display: flex; gap: 6px; }
+.sea-history-actions button {
+  padding: 6px 9px;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--r-xs);
+  background: rgba(0,212,255,.07);
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  cursor: pointer;
+}
+.sea-history-actions button.danger { color: #ff7890; border-color: rgba(255,77,109,.30); background: rgba(255,77,109,.07); }
+.sea-history-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.sea-history-card {
+  padding: 10px;
+  border-left: 2px solid var(--success);
+  background: rgba(255,255,255,.025);
+}
+.sea-history-card span { display: block; color: var(--text-300); font-family: var(--font-mono); font-size: 8px; }
+.sea-history-card strong { display: block; margin-top: 4px; color: var(--success); text-transform: uppercase; }
+.sea-history-card p { margin-top: 4px; }
+
+@media (max-width: 720px) {
+  .sea-risk-topline,
+  .sea-suitability-head,
+  .sea-history-header,
+  .sea-recommendation-row { align-items: flex-start; flex-direction: column; }
+}
