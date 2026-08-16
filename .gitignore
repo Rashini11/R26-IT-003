@@ -44,3 +44,5 @@ ml/models/*.pth
 !ml/models/final/*.pth
 !ml/models/final/*.pt
 ml/notebooks/
+
+node_modules
