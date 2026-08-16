@@ -36,7 +36,9 @@ import {
   Network,
   Globe,
   Layers,
+  Navigation,
 } from "lucide-react";
+import LiveSimulation from "./LiveSimulation";
 import "./App.css";
 
 /* ══════════════════════════════════════════════════════════
@@ -101,6 +103,18 @@ const MODULES = {
     colorMid: "#f9731655",
     tag: "YOLO + CNN Fusion",
     statusLabel: "RADAR ANALYSIS",
+  },
+  simulation: {
+    id: "simulation",
+    label: "Live Simulation",
+    title: "Live Maritime Simulation",
+    description: "Streams SAR images, replays two AIS trajectories, forecasts motion with the selected GRU and assesses DCPA/TCPA collision risk.",
+    icon: Navigation,
+    color: "#00d4ff",
+    colorDim: "#00d4ff22",
+    colorMid: "#00d4ff55",
+    tag: "SAR · AIS · GRU · CPA",
+    statusLabel: "SIMULATION CONTROL",
   },
 };
 
@@ -692,6 +706,10 @@ export default function App() {
           <p>{mod.description}</p>
         </div>
 
+        {activeModule === "simulation" ? (
+          <LiveSimulation />
+        ) : (
+          <>
         {/* ── 3-panel analysis grid ── */}
         <div className="analysis-grid">
 
@@ -818,6 +836,8 @@ export default function App() {
             {renderResults()}
           </section>
         </div>
+          </>
+        )}
 
         {/* Footer strip */}
         <footer className="main-footer">

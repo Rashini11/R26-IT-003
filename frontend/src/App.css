@@ -1310,3 +1310,61 @@ p { margin: 0; }
   .cb-badges     { gap: 6px; }
   .badge-live    { padding: 4px 8px; font-size: 9px; }
 }
+/* ═══════════════════════════════════════════════════════════
+   LIVE MARITIME SIMULATION
+   ═══════════════════════════════════════════════════════════ */
+.simulation-page { padding: 22px 24px 10px; display: flex; flex-direction: column; gap: 16px; }
+.sim-control-bar, .sim-status-strip, .sim-panel, .sim-radar-card {
+  background: rgba(7, 21, 36, 0.88); border: 1px solid var(--border-hi); border-radius: var(--r-md);
+  box-shadow: 0 14px 40px rgba(0,0,0,.25); backdrop-filter: blur(16px);
+}
+.sim-control-bar { display: flex; align-items: end; gap: 10px; padding: 14px; flex-wrap: wrap; }
+.sim-control-bar label { display: flex; flex-direction: column; gap: 5px; color: var(--text-300); font-family: var(--font-mono); font-size: 9px; letter-spacing: .08em; }
+.sim-control-bar select { min-width: 155px; background: var(--bg-void); color: var(--text-100); border: 1px solid var(--border-hi); border-radius: 7px; padding: 9px 10px; outline: none; }
+.sim-button { height: 36px; display: inline-flex; align-items: center; gap: 7px; border-radius: 7px; padding: 0 14px; border: 1px solid transparent; font-weight: 700; letter-spacing: .07em; cursor: pointer; }
+.sim-button:disabled { opacity: .38; cursor: not-allowed; }
+.sim-button--start { background: rgba(0,255,179,.13); color: var(--success); border-color: rgba(0,255,179,.35); }
+.sim-button--stop { background: rgba(255,77,109,.13); color: var(--danger); border-color: rgba(255,77,109,.35); }
+.sim-button--ghost { background: var(--cyan-dim); color: var(--cyan); border-color: var(--cyan-mid); }
+.sim-error { display: flex; align-items: center; gap: 8px; padding: 10px 12px; color: #ff879c; background: rgba(255,77,109,.09); border: 1px solid rgba(255,77,109,.25); border-radius: 8px; font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; }
+.sim-status-strip { display: flex; gap: 18px; align-items: center; padding: 10px 14px; color: var(--text-200); font-family: var(--font-mono); font-size: 10px; flex-wrap: wrap; }
+.sim-status-strip span { display: inline-flex; align-items: center; gap: 6px; }
+.sim-online, .sim-offline { padding: 4px 8px; border-radius: 999px; font-weight: 700; }
+.sim-online { color: var(--success); background: rgba(0,255,179,.12); }
+.sim-offline { color: var(--text-300); background: rgba(255,255,255,.04); }
+.sim-top-grid { display: grid; grid-template-columns: 1.15fr .85fr .85fr; gap: 14px; }
+.sim-vessel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.sim-panel, .sim-radar-card { padding: 14px; min-width: 0; }
+.sim-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--text-200); font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; margin-bottom: 12px; }
+.sim-panel-head > span { display: inline-flex; align-items: center; gap: 6px; }
+.sim-mono { font-family: var(--font-mono); color: var(--text-300); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sim-image-stage { min-height: 292px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: #01070c; color: var(--text-300); text-align: center; }
+.sim-image-stage img { width: 100%; height: 292px; object-fit: contain; }
+.sim-class-main { font-size: 34px; font-weight: 800; text-transform: uppercase; color: var(--cyan); margin: 18px 0; letter-spacing: .04em; }
+.sim-kpi-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+.sim-kpi-grid > div { padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: rgba(0,0,0,.14); min-width: 0; }
+.sim-kpi-grid small, .sim-forecast small { display: block; color: var(--text-300); font-family: var(--font-mono); font-size: 8px; letter-spacing: .08em; margin-bottom: 5px; }
+.sim-kpi-grid strong, .sim-forecast strong { display: block; color: var(--text-100); font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; }
+.sim-kpi-grid em { color: var(--text-300); font-family: var(--font-mono); font-size: 9px; font-style: normal; }
+.sim-decision { display: flex; align-items: center; gap: 7px; margin-top: 12px; color: var(--text-200); font-size: 12px; }
+.sim-risk { display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; font-family: var(--font-mono); font-weight: 800; text-transform: uppercase; }
+.sim-risk-card > .sim-risk { width: 100%; padding: 16px; margin: 8px 0 14px; font-size: 25px; letter-spacing: .12em; }
+.sim-table-wrap .sim-risk { padding: 3px 7px; font-size: 9px; }
+.sim-risk--low { color: var(--success); background: rgba(0,255,179,.12); border: 1px solid rgba(0,255,179,.32); }
+.sim-risk--medium { color: #ffd166; background: rgba(255,209,102,.12); border: 1px solid rgba(255,209,102,.32); }
+.sim-risk--high { color: var(--warn); background: rgba(249,115,22,.12); border: 1px solid rgba(249,115,22,.35); }
+.sim-risk--critical { color: var(--danger); background: rgba(255,77,109,.14); border: 1px solid rgba(255,77,109,.4); box-shadow: 0 0 25px rgba(255,77,109,.12); }
+.sim-risk--unknown { color: var(--text-300); background: rgba(255,255,255,.04); border: 1px solid var(--border); }
+.sim-risk-reasons { margin-top: 12px; color: var(--text-200); font-size: 11px; line-height: 1.5; }
+.sim-history-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; margin: 12px 0; color: var(--text-300); font-family: var(--font-mono); font-size: 9px; }
+.sim-history-track { height: 5px; background: rgba(255,255,255,.05); border-radius: 999px; overflow: hidden; }
+.sim-history-track i { display: block; height: 100%; background: linear-gradient(90deg,var(--cyan),var(--success)); transition: width .35s ease; }
+.sim-forecast { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; padding-top: 11px; border-top: 1px solid var(--border); }
+.sim-waiting { padding: 10px; border: 1px dashed var(--border-hi); border-radius: 8px; color: var(--text-300); font-size: 11px; overflow-wrap: anywhere; }
+.sim-events table { width: 100%; border-collapse: collapse; min-width: 730px; }
+.sim-events th, .sim-events td { padding: 9px 8px; border-bottom: 1px solid var(--border); text-align: left; font-family: var(--font-mono); font-size: 9px; color: var(--text-200); }
+.sim-events th { color: var(--text-300); letter-spacing: .08em; }
+.sim-table-wrap { overflow-x: auto; }
+.sim-notice { display: flex; align-items: center; gap: 7px; color: var(--text-300); font-family: var(--font-mono); font-size: 9px; padding: 0 3px; }
+@media (max-width: 1120px) { .sim-top-grid { grid-template-columns: 1fr 1fr; } .sim-radar-card { grid-column: span 2; } }
+@media (max-width: 760px) { .simulation-page { padding: 14px; } .sim-top-grid, .sim-vessel-grid { grid-template-columns: 1fr; } .sim-radar-card { grid-column: auto; } .sim-control-bar label, .sim-control-bar select { width: 100%; } .sim-button { flex: 1; justify-content: center; } }
