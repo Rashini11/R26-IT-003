@@ -1,10 +1,11 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+export const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+
 const AuthContext = createContext(null);
 
-// Every OceanIQ API request should include the HttpOnly session cookie.
 axios.defaults.withCredentials = true;
 
 export function AuthProvider({ children }) {
@@ -34,6 +35,19 @@ export function AuthProvider({ children }) {
       delete axios.defaults.headers.common["X-CSRF-Token"];
     }
   }, [csrfToken]);
+
+  const refreshSession = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/auth/me`, {
+        withCredentials: true,
+      });
+      applySession(response.data);
+      return response.data;
+    } catch (err) {
+      if (err?.response?.status === 401) clearSession();
+      throw err;
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -66,12 +80,32 @@ export function AuthProvider({ children }) {
         { withCredentials: true }
       );
       applySession(response.data);
-      return true;
+      return { ok: true, data: response.data };
     } catch (err) {
       clearSession();
       const detail = err?.response?.data?.detail;
       setError(detail || "Unable to sign in. Please try again.");
-      return false;
+      return { ok: false, error: detail || "Unable to sign in." };
+    }
+  };
+
+  const signup = async ({ fullName, username, email, password }) => {
+    setError("");
+    try {
+      const response = await axios.post(`${API_BASE_URL}/auth/signup`, {
+        full_name: fullName,
+        username,
+        email,
+        password,
+      });
+      return { ok: true, data: response.data };
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      const message = Array.isArray(detail)
+        ? detail.map((item) => item.msg).join(" · ")
+        : detail || "Unable to create profile. Please try again.";
+      setError(message);
+      return { ok: false, error: message };
     }
   };
 
@@ -90,14 +124,32 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const permissions = useMemo(() => {
+    const isAdmin = user?.role === "admin";
+    const approved = user?.approval_status === "approved";
+    const accessLevel = user?.access_level || "none";
+
+    return {
+      isAdmin,
+      isPending: user?.approval_status === "pending",
+      isRejected: user?.approval_status === "rejected",
+      canRead: isAdmin || (approved && ["read_only", "read_write"].includes(accessLevel)),
+      canWrite: isAdmin || (approved && accessLevel === "read_write"),
+      accessLevel: isAdmin ? "read_write" : accessLevel,
+    };
+  }, [user]);
+
   const value = {
     isAuthenticated,
     user,
     loading,
     error,
     csrfToken,
+    ...permissions,
     login,
+    signup,
     logout,
+    refreshSession,
     clearError: () => setError(""),
   };
 

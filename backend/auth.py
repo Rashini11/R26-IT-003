@@ -5,14 +5,15 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
+from bson import ObjectId
+from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError, PyMongoError
 from pwdlib import PasswordHash
-from dotenv import load_dotenv
 
 
 BASE_PATH = Path(__file__).resolve().parent.parent
@@ -22,12 +23,20 @@ MONGO_URI = os.getenv("MONGO_URI", "").strip()
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "marine_ai_db").strip() or "marine_ai_db"
 
 COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "oceaniq_session")
-COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").lower() == "true"
+COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 SESSION_HOURS = max(1, int(os.getenv("AUTH_SESSION_HOURS", "8")))
 MAX_FAILED_ATTEMPTS = max(3, int(os.getenv("AUTH_MAX_FAILED_ATTEMPTS", "5")))
 LOCK_MINUTES = max(1, int(os.getenv("AUTH_LOCK_MINUTES", "10")))
 
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+READ_LEVELS = {"read_only", "read_write"}
+WRITE_LEVELS = {"read_write"}
+
 password_hasher = PasswordHash.recommended()
 DUMMY_HASH = password_hasher.hash("OceanIQ-dummy-password-never-used")
 
@@ -42,9 +51,38 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class SignupRequest(BaseModel):
+    full_name: str = Field(min_length=2, max_length=120)
+    username: str = Field(min_length=3, max_length=80)
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=10, max_length=256)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        value = value.strip().lower()
+        if "@" not in value or value.startswith("@") or value.endswith("@"):
+            raise ValueError("Enter a valid email address")
+        return value
+
+    @field_validator("full_name", "username")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Value cannot be empty")
+        return value
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(min_length=1, max_length=256)
     new_password: str = Field(min_length=10, max_length=256)
+
+
+class AdminUserUpdateRequest(BaseModel):
+    approval_status: Optional[Literal["pending", "approved", "rejected"]] = None
+    access_level: Optional[Literal["none", "read_only", "read_write"]] = None
+    is_active: Optional[bool] = None
 
 
 @dataclass
@@ -68,13 +106,34 @@ def normalize_email(value: Optional[str]) -> Optional[str]:
     return value or None
 
 
+def _iso(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value
+
+
 def public_user(user: dict) -> dict:
+    role = user.get("role", "user")
+    approval_status = user.get(
+        "approval_status",
+        "approved" if role == "admin" else "pending",
+    )
+    access_level = user.get(
+        "access_level",
+        "read_write" if role == "admin" else "none",
+    )
+
     return {
         "id": str(user.get("_id", "")),
+        "full_name": user.get("full_name"),
         "username": user.get("username"),
         "email": user.get("email"),
-        "role": user.get("role", "user"),
+        "role": role,
+        "approval_status": approval_status,
+        "access_level": access_level,
         "is_active": bool(user.get("is_active", False)),
+        "created_at": _iso(user.get("created_at")),
+        "last_login_at": _iso(user.get("last_login_at")),
     }
 
 
@@ -108,6 +167,8 @@ def _auth_collections():
         if not _indexes_ready:
             users.create_index("username_normalized", unique=True)
             users.create_index("email_normalized", unique=True, sparse=True)
+            users.create_index("approval_status")
+            users.create_index("access_level")
             sessions.create_index("token_hash", unique=True)
             sessions.create_index("expires_at", expireAfterSeconds=0)
             sessions.create_index("user_id")
@@ -128,6 +189,9 @@ def create_user_account(
     password: str,
     email: Optional[str] = None,
     role: str = "user",
+    full_name: Optional[str] = None,
+    approval_status: Optional[str] = None,
+    access_level: Optional[str] = None,
 ) -> dict:
     username = username.strip()
     username_normalized = normalize_username(username)
@@ -137,16 +201,31 @@ def create_user_account(
         raise ValueError("Username must contain at least 3 characters")
     if len(password) < 10:
         raise ValueError("Password must contain at least 10 characters")
-    if role not in {"admin", "user", "viewer"}:
-        raise ValueError("Role must be admin, user, or viewer")
+    if role not in {"admin", "user"}:
+        raise ValueError("Role must be admin or user")
+
+    if role == "admin":
+        approval_status = "approved"
+        access_level = "read_write"
+    else:
+        approval_status = approval_status or "pending"
+        access_level = access_level or "none"
+
+    if approval_status not in {"pending", "approved", "rejected"}:
+        raise ValueError("Invalid approval status")
+    if access_level not in {"none", "read_only", "read_write"}:
+        raise ValueError("Invalid access level")
 
     users, _ = _auth_collections()
     now = utc_now()
     doc = {
+        "full_name": (full_name or "").strip() or None,
         "username": username,
         "username_normalized": username_normalized,
         "password_hash": password_hasher.hash(password),
         "role": role,
+        "approval_status": approval_status,
+        "access_level": access_level,
         "is_active": True,
         "created_at": now,
         "updated_at": now,
@@ -218,31 +297,104 @@ def get_auth_context(request: Request) -> AuthContext:
     return _load_auth_context(request)
 
 
+def _check_csrf(request: Request, ctx: AuthContext) -> None:
+    if request.method.upper() not in UNSAFE_METHODS:
+        return
+
+    supplied = request.headers.get("X-CSRF-Token", "")
+    expected = ctx.session_doc.get("csrf_token", "")
+    if not supplied or not expected or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF validation failed",
+        )
+
+
 def require_authenticated_request(
     request: Request,
     ctx: AuthContext = Depends(get_auth_context),
 ) -> dict:
-    if request.method.upper() in UNSAFE_METHODS:
-        supplied = request.headers.get("X-CSRF-Token", "")
-        expected = ctx.session_doc.get("csrf_token", "")
-        if not supplied or not expected or not hmac.compare_digest(supplied, expected):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="CSRF validation failed",
-            )
+    """
+    Main OceanIQ API authorization dependency.
 
-    return public_user(ctx.user_doc)
+    Admin: full access.
+    Read-write user: GET + state-changing requests.
+    Read-only user: GET/HEAD/OPTIONS only.
+    Pending/rejected user: authentication endpoints only; dashboard APIs are blocked.
+    """
+    _check_csrf(request, ctx)
+    user = public_user(ctx.user_doc)
+
+    if user.get("role") == "admin":
+        return user
+
+    approval = user.get("approval_status")
+    access = user.get("access_level")
+
+    if approval == "pending":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is awaiting administrator approval",
+        )
+    if approval == "rejected":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account access request was rejected",
+        )
+    if approval != "approved" or access not in READ_LEVELS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account does not have OceanIQ access",
+        )
+
+    if request.method.upper() in UNSAFE_METHODS and access not in WRITE_LEVELS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Read-only account: this action requires read-write access",
+        )
+
+    return user
 
 
 def require_admin(
-    user: dict = Depends(require_authenticated_request),
+    request: Request,
+    ctx: AuthContext = Depends(get_auth_context),
 ) -> dict:
+    _check_csrf(request, ctx)
+    user = public_user(ctx.user_doc)
     if user.get("role") != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Administrator access required",
         )
     return user
+
+
+@router.post("/signup", status_code=status.HTTP_201_CREATED)
+def signup(payload: SignupRequest):
+    """Public account creation. Access is always pending admin approval."""
+    try:
+        user = create_user_account(
+            username=payload.username,
+            password=payload.password,
+            email=payload.email,
+            role="user",
+            full_name=payload.full_name,
+            approval_status="pending",
+            access_level="none",
+        )
+        return {
+            "created": True,
+            "message": (
+                "Profile created successfully. An administrator must approve "
+                "read-only or read-write access before the dashboard can be used."
+            ),
+            "user": user,
+        }
+    except ValueError as exc:
+        message = str(exc)
+        code = status.HTTP_409_CONFLICT if "already exists" in message else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=message) from exc
 
 
 @router.post("/login")
@@ -263,8 +415,8 @@ def login(payload: LoginRequest, response: Response):
 
         if not user.get("is_active", False):
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid username or password",
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is disabled. Contact an administrator.",
             )
 
         locked_until = user.get("locked_until")
@@ -299,8 +451,8 @@ def login(payload: LoginRequest, response: Response):
                 }
             },
         )
+        user["last_login_at"] = now
 
-        # Always create a brand-new session after successful authentication.
         raw_token = secrets.token_urlsafe(48)
         csrf_token = secrets.token_urlsafe(32)
         expires_at = now + timedelta(hours=SESSION_HOURS)
@@ -353,15 +505,15 @@ def me(ctx: AuthContext = Depends(get_auth_context)):
 
 @router.post("/logout")
 def logout(
+    request: Request,
     response: Response,
     ctx: AuthContext = Depends(get_auth_context),
-    _: dict = Depends(require_authenticated_request),
 ):
+    _check_csrf(request, ctx)
     _, sessions = _auth_collections()
     try:
         sessions.delete_one({"_id": ctx.session_doc["_id"]})
     except PyMongoError:
-        # Clear the browser cookie even if the DB is momentarily unavailable.
         pass
 
     response.delete_cookie(
@@ -377,10 +529,11 @@ def logout(
 @router.post("/change-password")
 def change_password(
     payload: ChangePasswordRequest,
+    request: Request,
     response: Response,
     ctx: AuthContext = Depends(get_auth_context),
-    _: dict = Depends(require_authenticated_request),
 ):
+    _check_csrf(request, ctx)
     users, sessions = _auth_collections()
 
     if not password_hasher.verify(
@@ -403,7 +556,6 @@ def change_password(
         },
     )
 
-    # Password changes revoke every active session for the account.
     sessions.delete_many({"user_id": ctx.user_doc["_id"]})
     response.delete_cookie(
         key=COOKIE_NAME,
@@ -417,3 +569,99 @@ def change_password(
         "message": "Password changed. Please sign in again.",
         "authenticated": False,
     }
+
+
+@router.get("/admin/users")
+def admin_list_users(_: dict = Depends(require_admin)):
+    users, _ = _auth_collections()
+    try:
+        items = list(users.find({}).sort("created_at", -1))
+        return {
+            "users": [public_user(user) for user in items],
+            "count": len(items),
+        }
+    except PyMongoError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication database is unavailable",
+        ) from exc
+
+
+@router.patch("/admin/users/{user_id}")
+def admin_update_user(
+    user_id: str,
+    payload: AdminUserUpdateRequest,
+    _: dict = Depends(require_admin),
+):
+    users, sessions = _auth_collections()
+
+    try:
+        object_id = ObjectId(user_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user id",
+        ) from exc
+
+    try:
+        target = users.find_one({"_id": object_id})
+        if not target:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+
+        if target.get("role") == "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Administrator accounts cannot be changed from this access panel",
+            )
+
+        updates = {}
+        if payload.approval_status is not None:
+            updates["approval_status"] = payload.approval_status
+        if payload.access_level is not None:
+            updates["access_level"] = payload.access_level
+        if payload.is_active is not None:
+            updates["is_active"] = payload.is_active
+
+        next_approval = updates.get(
+            "approval_status",
+            target.get("approval_status", "pending"),
+        )
+        next_access = updates.get(
+            "access_level",
+            target.get("access_level", "none"),
+        )
+
+        if next_approval == "approved" and next_access not in READ_LEVELS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Approved users must have read-only or read-write access",
+            )
+
+        if next_approval in {"pending", "rejected"}:
+            updates["access_level"] = "none"
+
+        if not updates:
+            return {"user": public_user(target)}
+
+        updates["updated_at"] = utc_now()
+        users.update_one({"_id": object_id}, {"$set": updates})
+
+        # Revoke sessions immediately so changed permissions take effect at once.
+        sessions.delete_many({"user_id": object_id})
+
+        updated = users.find_one({"_id": object_id})
+        return {
+            "message": "User access updated. Existing sessions were revoked.",
+            "user": public_user(updated),
+        }
+
+    except HTTPException:
+        raise
+    except PyMongoError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication database is unavailable",
+        ) from exc

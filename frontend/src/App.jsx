@@ -38,16 +38,20 @@ import {
   Globe,
   Layers,
   Navigation,
+  UserRoundCog,
+  LockKeyhole,
 } from "lucide-react";
 import LiveSimulation from "./LiveSimulation";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LogoutButton from "./components/LogoutButton";
+import AdminUsers from "./components/AdminUsers";
+import { useAuth } from "./context/AuthContext";
 import "./App.css";
 
 /* ══════════════════════════════════════════════════════════
    BACKEND CONFIGURATION — do not modify endpoint names
    ══════════════════════════════════════════════════════════ */
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = "http://localhost:8000";
 
 /* ══════════════════════════════════════════════════════════
    MODULE DEFINITIONS
@@ -324,6 +328,7 @@ function ProbBar({ label, value, color }) {
    MAIN APP COMPONENT
    ══════════════════════════════════════════════════════════ */
 function AppContent() {
+  const { user, canWrite, isAdmin, accessLevel } = useAuth();
 
   /* ── Application state ── */
   const [activeModule, setActiveModule] = useState("hull");
@@ -337,6 +342,7 @@ function AppContent() {
   const [applyEnhancement, setApplyEnhancement] = useState(false);
   const [seaHistory, setSeaHistory] = useState([]);
   const [seaHistoryLoading, setSeaHistoryLoading] = useState(false);
+  const [showAccessAdmin, setShowAccessAdmin] = useState(false);
 
   const mod = MODULES[activeModule];
   const ModIcon = mod.icon;
@@ -355,6 +361,7 @@ function AppContent() {
   }, []);
 
   const clearSeaHistory = async () => {
+    if (!canWrite) return;
     try {
       await axios.delete(`${API_BASE_URL}/sea-state-history`);
       setSeaHistory([]);
@@ -365,12 +372,12 @@ function AppContent() {
 
   /* ── File selection handler ── */
   const processFile = useCallback((f) => {
-    if (!f || !f.type.startsWith("image/")) return;
+    if (!canWrite || !f || !f.type.startsWith("image/")) return;
     setFile(f);
     setResult(null);
     setShowGradcam(false);
     setPreview(URL.createObjectURL(f));
-  }, []);
+  }, [canWrite]);
 
   const handleFileChange = (e) => processFile(e.target.files[0]);
 
@@ -400,7 +407,7 @@ function AppContent() {
      All original endpoints are preserved.
      ══════════════════════════════════════════════ */
   const runPrediction = async () => {
-    if (!file || loading) return;
+    if (!file || loading || !canWrite) return;
     const form = new FormData();
     form.append("file", file);
     if (activeModule === "sea") {
@@ -772,7 +779,7 @@ function AppContent() {
                   <button onClick={fetchSeaHistory} disabled={seaHistoryLoading}>
                     {seaHistoryLoading ? "LOADING…" : "REFRESH"}
                   </button>
-                  <button className="danger" onClick={clearSeaHistory}>CLEAR</button>
+                  <button className="danger" onClick={clearSeaHistory} disabled={!canWrite} title={!canWrite ? "Read-only access cannot clear history" : "Clear history"}>CLEAR</button>
                 </div>
               </div>
               {seaHistory.length === 0 ? (
@@ -879,6 +886,10 @@ function AppContent() {
      ════════════════════════════════════════════════════════ */
   return (
     <div className="app-shell">
+
+      {showAccessAdmin && isAdmin && (
+        <AdminUsers onClose={() => setShowAccessAdmin(false)} />
+      )}
 
       {/* Full-viewport animated radar canvas background */}
       <RadarCanvas />
@@ -991,6 +1002,16 @@ function AppContent() {
           <div className="cb-badges">
             <div className="badge-live"><span className="live-dot" />LIVE</div>
             <div className="badge-secure"><Shield size={12} />SECURE</div>
+            <div className={`badge-access ${canWrite ? "badge-access--write" : "badge-access--read"}`}>
+              <LockKeyhole size={12} />
+              {isAdmin ? "ADMIN" : accessLevel === "read_write" ? "READ / WRITE" : "READ ONLY"}
+            </div>
+            {isAdmin && (
+              <button className="admin-access-btn" onClick={() => setShowAccessAdmin(true)}>
+                <UserRoundCog size={13} /> ACCESS ADMIN
+              </button>
+            )}
+            <span className="cb-user">{user?.username}</span>
             <LogoutButton />
           </div>
         </header>
@@ -1001,8 +1022,20 @@ function AppContent() {
           <p>{mod.description}</p>
         </div>
 
+        {!canWrite && (
+          <div className="readonly-banner">
+            <LockKeyhole size={14} />
+            <div>
+              <strong>READ-ONLY ACCESS</strong>
+              <span>You can review available data and history, but analysis uploads, deletes and simulation controls are blocked by the backend.</span>
+            </div>
+          </div>
+        )}
+
         {activeModule === "simulation" ? (
-          <LiveSimulation />
+          <div className={!canWrite ? "simulation-readonly" : ""}>
+            <LiveSimulation />
+          </div>
         ) : (
           <>
         {/* ── 3-panel analysis grid ── */}
@@ -1017,13 +1050,13 @@ function AppContent() {
 
             {/* Drag-and-drop zone */}
             <label
-              className={`drop-zone ${dragOver ? "dz--over" : ""} ${file ? "dz--filled" : ""}`}
+              className={`drop-zone ${dragOver ? "dz--over" : ""} ${file ? "dz--filled" : ""} ${!canWrite ? "dz--readonly" : ""}`}
               style={dragOver ? { borderColor: mod.color } : {}}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
             >
-              <input type="file" accept="image/*" onChange={handleFileChange} />
+              <input type="file" accept="image/*" onChange={handleFileChange} disabled={!canWrite} />
 
               {file ? (
                 <div className="dz-loaded">
@@ -1049,6 +1082,7 @@ function AppContent() {
                   type="checkbox"
                   checked={applyEnhancement}
                   onChange={(e) => setApplyEnhancement(e.target.checked)}
+                  disabled={!canWrite}
                 />
                 <span>Apply image enhancement before prediction</span>
               </label>
@@ -1058,7 +1092,7 @@ function AppContent() {
               className="run-btn"
               style={{ "--mc": mod.color, "--mc-dim": mod.colorDim }}
               onClick={runPrediction}
-              disabled={!file || loading}
+              disabled={!file || loading || !canWrite}
             >
               {loading
                 ? <><Loader size={15} className="spin" /> ANALYZING…</>
