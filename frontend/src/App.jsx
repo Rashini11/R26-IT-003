@@ -2,6 +2,8 @@ import { useState } from "react";
 import axios from "axios";
 import { jsPDF } from "jspdf";
 import "./App.css";
+import ProtectedRoute from "./components/ProtectedRoute";
+import LogoutButton from "./components/LogoutButton";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
 
@@ -28,7 +30,7 @@ const modules = {
   },
 };
 
-function App() {
+function AppContent() {
   const [mode, setMode] = useState("hull");
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -912,6 +914,8 @@ const generatePDF = () => {
           <span></span>
           AI System Online
         </div>
+
+        <LogoutButton />
       </header>
 
       <section className="hero">
@@ -1035,6 +1039,14 @@ function ResultItem({ label, value }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <ProtectedRoute>
+      <AppContent />
+    </ProtectedRoute>
   );
 }
 
