@@ -57,6 +57,7 @@ data_augmentation = tf.keras.Sequential([
     layers.RandomFlip("horizontal"),
     layers.RandomRotation(0.1),
     layers.RandomZoom(0.1),
+    layers.RandomContrast(0.1),
 ])
 
 # =========================
@@ -83,7 +84,7 @@ base_model = tf.keras.applications.MobileNetV2(
 )
 
 # 🔥 Fine-tuning
-base_model.trainable = True  # Start with frozen layers
+base_model.trainable = False  # Start with frozen layers
 
 # =========================
 # 🧠 Functional Model (Grad-CAM Friendly)
@@ -140,7 +141,7 @@ history = model.fit(
 # =========================
 # 💾 Save Model (Grad-CAM Compatible)
 # =========================
-model.save("model/hull_model.h5", include_optimizer=False)
+model.save("model/hull_model.keras", include_optimizer=False)
 
 # =========================
 # 📊 Plot Accuracy

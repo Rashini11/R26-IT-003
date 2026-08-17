@@ -81,12 +81,13 @@ RADAR_CNN_MODEL_PATH = BASE_PATH / "ml" / "models" / "final" / "deepercnn_best.p
 # HULL DEFECT MODEL - TENSORFLOW
 # =====================================================
 hull_model = None
-hull_classes = ["biofouling", "corrosion", "cracks"]
+hull_classes = ["biofouling", "corrosion", "cracks", "paint_damage", "no_defect"]
 
 recommendations = {
     "biofouling": "Clean hull using high-pressure water or antifouling treatment.",
     "corrosion": "Apply anti-corrosion coating or replace damaged metal.",
-    "cracks": "Critical damage. Perform welding repair immediately."
+    "cracks": "Critical damage. Perform welding repair immediately.",
+    "paint_damage": "Inspect the affected area and repair or reapply marine-grade protective coating."
 }
 
 try:
