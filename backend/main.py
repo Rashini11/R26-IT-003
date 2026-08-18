@@ -282,6 +282,23 @@ try:
             "Hull model loaded successfully"
         )
 
+        print("\n========== MOBILENETV2 LAYERS ==========")
+
+        for layer in hull_model.layers:
+
+            if isinstance(layer, tf.keras.Model):
+
+                print("Nested model:", layer.name)
+
+                for sublayer in layer.layers:
+                    print(
+                        sublayer.name,
+                        "->",
+                        sublayer.__class__.__name__
+                    )
+
+        print("========================================\n")
+
     else:
         print(
             "WARNING: Hull model not found:",
@@ -302,25 +319,73 @@ def make_gradcam_heatmap(
     last_conv_layer_name,
     pred_index=None,
 ):
+    """
+    Grad-CAM for the nested MobileNetV2 hull model.
+    """
+
+    # Get the nested MobileNetV2
+    base_model = model.get_layer(
+        "mobilenetv2_1.00_224"
+    )
+
+    # Get the target convolutional layer
+    last_conv_layer = base_model.get_layer(
+        last_conv_layer_name
+    )
+
+    # Create a model that gives us:
+    # 1. Conv feature maps
+    # 2. MobileNetV2 output
+    grad_model = tf.keras.models.Model(
+        inputs=base_model.input,
+        outputs=[
+            last_conv_layer.output,
+            base_model.output,
+        ],
+    )
+
     img_tensor = tf.convert_to_tensor(
         img_array,
         dtype=tf.float32,
     )
 
-    conv_outputs = None
-
     with tf.GradientTape() as tape:
-        x = img_tensor
+
+        conv_outputs, features = grad_model(
+            img_tensor,
+            training=False,
+        )
+
+        # IMPORTANT:
+        # Get the classifier layers after MobileNetV2
+        x = features
 
         for layer in model.layers:
-            x = layer(x)
+            if layer.name == "mobilenetv2_1.00_224":
+                continue
 
-            if (
-                layer.name
-                == last_conv_layer_name
+            if layer.name in [
+                "random_flip",
+                "random_rotation",
+                "random_zoom",
+                "random_contrast",
+            ]:
+                continue
+
+            # Only apply actual classifier layers
+            if isinstance(
+                layer,
+                (
+                    tf.keras.layers.GlobalAveragePooling2D,
+                    tf.keras.layers.BatchNormalization,
+                    tf.keras.layers.Dense,
+                    tf.keras.layers.Dropout,
+                ),
             ):
-                conv_outputs = x
-                tape.watch(conv_outputs)
+                x = layer(
+                    x,
+                    training=False,
+                )
 
         predictions = x
 
@@ -329,34 +394,44 @@ def make_gradcam_heatmap(
                 predictions[0]
             )
 
-        loss = predictions[
+        class_channel = predictions[
             :,
             pred_index,
         ]
 
+    # Calculate gradients
     grads = tape.gradient(
-        loss,
+        class_channel,
         conv_outputs,
     )
 
+    if grads is None:
+        raise ValueError(
+            "Grad-CAM gradients are None."
+        )
+
+    # Average gradients
     pooled_grads = tf.reduce_mean(
         grads,
-        axis=(0, 1, 2),
+        axis=(1, 2),
     )
 
     conv_outputs = conv_outputs[0]
+    pooled_grads = pooled_grads[0]
 
+    # Create heatmap
     heatmap = tf.reduce_sum(
-        conv_outputs
-        * pooled_grads,
+        conv_outputs * pooled_grads,
         axis=-1,
     )
 
+    # ReLU
     heatmap = tf.maximum(
         heatmap,
         0,
     )
 
+    # Normalize
     heatmap = heatmap / (
         tf.reduce_max(heatmap)
         + 1e-8
@@ -412,21 +487,86 @@ async def predict_hull_defect(
         )
 
         preds = hull_model.predict(
-            img_array
+            img_array,
+            verbose=0
         )
 
-        class_idx = np.argmax(preds)
-        prediction = hull_classes[
-            class_idx
+        # Get probabilities for every defect class
+        probabilities = preds[0]
+
+        # Primary prediction
+        class_idx = int(np.argmax(probabilities))
+        prediction = hull_classes[class_idx]
+
+        confidence = float(probabilities[class_idx])
+
+        # =====================================================
+        # HULL DEFECT PROBABILITIES
+        # =====================================================
+
+        # Show probability for EVERY defect class
+        detected_defects = []
+
+        for i, prob in enumerate(probabilities):
+
+            detected_defects.append({
+                "defect": hull_classes[i],
+                "confidence": round(float(prob) * 100, 2)
+            })
+
+        # Sort highest probability first
+        detected_defects.sort(
+            key=lambda x: x["confidence"],
+            reverse=True
+        )
+
+        # =====================================================
+        # TOP DEFECTS
+        # =====================================================
+
+        # Highest probability defect
+        primary_defect = detected_defects[0]
+
+        # Only consider another defect if its probability
+        # is high enough to be meaningful.
+        SECONDARY_THRESHOLD = 15.0  # 15%
+
+        secondary_defects = [
+            item
+            for item in detected_defects[1:]
+            if item["confidence"] >= SECONDARY_THRESHOLD
         ]
 
-        confidence = float(
-            np.max(preds)
-        )
+        # Only report multiple defects when there are
+        # actually meaningful secondary predictions.
+        multiple_defects = len(secondary_defects) > 0
 
-        LAST_CONV_LAYER = (
-            "mobilenetv2_1.00_224"
-        )
+        # Limit the output to maximum 3 defects
+        reported_defects = [
+            primary_defect
+        ] + secondary_defects[:2]
+
+        # =====================================================
+        # RECOMMENDATION
+        # =====================================================
+
+        if multiple_defects:
+
+            recommendation = (
+                "Multiple possible defects detected: "
+                + ", ".join(
+                    item["defect"]
+                    for item in reported_defects
+                )
+                + ". Inspect the affected area carefully "
+                "and perform appropriate repair for each defect."
+            )
+
+        else:
+
+            recommendation = recommendations[prediction]
+
+        LAST_CONV_LAYER = "Conv_1"
 
         heatmap = (
             make_gradcam_heatmap(
@@ -485,26 +625,26 @@ async def predict_hull_defect(
         # SAVE HULL PREDICTION TO MONGODB
         # =====================================================
         hull_record = {
-            "timestamp": datetime.now().strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
-            "filename": file.filename,
-            "prediction": prediction,
-            "confidence": confidence,
-            "recommendation": recommendations[prediction],
-            "warning": warning,
-        }
+        "timestamp": datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        ),
+        "filename": file.filename,
+        "prediction": prediction,
+        "confidence": confidence,
+        "detected_defects": reported_defects,
+        "multiple_defects": multiple_defects,
+        "recommendation": recommendation,
+        "warning": warning,
+    }
 
         save_hull_prediction_record(hull_record)
 
         return {
             "prediction": prediction,
-            "confidence": confidence,
-            "recommendation": (
-                recommendations[
-                    prediction
-                ]
-            ),
+            "confidence": round(confidence * 100, 2),
+            "detected_defects": detected_defects,
+            "multiple_defects": multiple_defects,
+            "recommendation": recommendation,
             "warning": warning,
             "gradcam": gradcam_base64,
         }
