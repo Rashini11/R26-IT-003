@@ -9,7 +9,7 @@ import os
 model = tf.keras.models.load_model("model/hull_model.keras")
 
 # ⚠️ MUST MATCH TRAINING ORDER
-class_names = ['biofouling', 'corrosion', 'cracks']
+class_names = ['biofouling', 'corrosion', 'cracks', 'paint_damage']
 
 # =========================
 # 🧠 Prediction function

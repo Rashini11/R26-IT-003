@@ -64,7 +64,7 @@ const MODULES = {
     label: "Hull Defect",
     title: "Hull Defect Detection",
     endpoint: `${API_BASE_URL}/predict-hull-defect`,
-    description: "CNN-based detection of corrosion, cracks, and biofouling with Grad-CAM explainability.",
+    description: "CNN-based detection of corrosion, cracks, and biofouling, and paint damage with Grad-CAM explainability.",
     icon: Anchor,
     color: "#00d4ff",
     colorDim: "#00d4ff22",
@@ -613,61 +613,163 @@ function AppContent() {
       );
     }
 
-    return (
+        return (
       <div className="result-section fade-in">
 
-        {/* Result header bar — shows module name and success indicator */}
-        <div className="result-header" style={{ borderColor: mod.colorMid }}>
-          <div className="result-badge"
-            style={{ background: mod.colorDim, color: mod.color, borderColor: mod.colorMid }}>
+        {/* Result header bar */}
+        <div
+          className="result-header"
+          style={{ borderColor: mod.colorMid }}
+        >
+          <div
+            className="result-badge"
+            style={{
+              background: mod.colorDim,
+              color: mod.color,
+              borderColor: mod.colorMid,
+            }}
+          >
             <CheckCircle2 size={12} />
             ANALYSIS COMPLETE
           </div>
-          <span className="result-hdr-module" style={{ color: mod.color }}>
+
+          <span
+            className="result-hdr-module"
+            style={{ color: mod.color }}
+          >
             {mod.statusLabel}
           </span>
         </div>
+
+        
 
         {/* ══════════════════════════
             HULL DEFECT results
             ══════════════════════════ */}
         {activeModule === "hull" && (
+          
           <div className="result-body">
 
-            {/* Primary: prediction label + confidence ring side by side */}
-            <div className="result-primary-row">
-              <div className="result-pred-block" style={{ borderColor: mod.colorMid }}>
-                <p className="rpb-eye">DETECTED CONDITION</p>
-                <p className="rpb-val" style={{ color: mod.color }}>{result.prediction}</p>
-                <p className="rpb-sub">Conf: {(result.confidence * 100).toFixed(2)}%</p>
-              </div>
-              <ConfidenceRing value={result.confidence * 100} color={mod.color} />
+          {/* PRIMARY PREDICTION */}
+          <div className="result-primary-row">
+            <div
+              className="result-pred-block"
+              style={{ borderColor: mod.colorMid }}
+            >
+              <p className="rpb-eye">DETECTED CONDITION</p>
+
+              <p
+                className="rpb-val"
+                style={{ color: mod.color }}
+              >
+                {result?.prediction}
+              </p>
+
+              <p className="rpb-sub">
+                Conf: {Number(result?.confidence ?? 0).toFixed(2)}%
+              </p>
             </div>
 
-            {/* Secondary data rows */}
-            <div className="data-rows-block">
-              <DataRow label="RECOMMENDATION" value={result.recommendation} />
-              <DataRow label="WARNING"         value={result.warning}        color="#f97316" />
-            </div>
+            <ConfidenceRing
+              value={Number(result?.confidence ?? 0)}
+              color={mod.color}
+            />
+          </div>
 
-            {/* Grad-CAM — explainability visualization toggle */}
-            {result.gradcam && (
-              <div className="gradcam-block">
-                <button className="ghost-btn" style={{ "--gc": mod.color }}
-                  onClick={() => setShowGradcam(v => !v)}>
-                  {showGradcam ? <EyeOff size={14} /> : <Eye size={14} />}
-                  {showGradcam ? "HIDE" : "SHOW"} GRAD-CAM HEATMAP
-                </button>
-                {showGradcam && (
-                  <div className="gradcam-img-wrap fade-in">
-                    <p className="gradcam-caption">
-                      <ScanEye size={12} /> Gradient-weighted Class Activation Map
-                    </p>
-                    <img src={`data:image/jpeg;base64,${result.gradcam}`} alt="Grad-CAM" />
-                  </div>
-                )}
+            {/* CLASS PROBABILITY DISTRIBUTION */}
+            {result.probabilities && (
+              <div className="prob-section">
+                <p className="prob-title">
+                  <BarChart2 size={13} />
+                  CLASS PROBABILITY DISTRIBUTION
+                </p>
+
+                {Object.entries(result.probabilities).map(([label, value]) => (
+                  <ProbBar
+                    key={label}
+                    label={label}
+                    value={Number(value).toFixed(2)}
+                    color={mod.color}
+                  />
+                ))}
               </div>
             )}
+
+            {/* SECONDARY DATA */}
+            <div className="data-rows-block">
+              <DataRow
+                label="RECOMMENDATION"
+                value={result.recommendation}
+              />
+
+              <DataRow
+                label="WARNING"
+                value={result.warning}
+                color="#f97316"
+              />
+            </div>
+
+            {/* Hull class probability distribution */}
+            {result.probabilities && (
+              <div className="prob-section">
+                <p className="prob-title">
+                  <BarChart2 size={13} /> CLASS PROBABILITY DISTRIBUTION
+                </p>
+
+                {Object.entries(result.probabilities).map(([label, probability]) => {
+                  const value = Number(probability);
+
+                  return (
+                    <ProbBar
+                      key={label}
+                      label={label}
+                      value={value}
+                      color={mod.color}
+                    />
+                  );
+                })}
+              </div>
+            )}
+
+            {/* GRAD-CAM */}
+            {result.gradcam && (
+              <div className="gradcam-block">
+
+                <button
+                  className="ghost-btn"
+                  style={{ "--gc": mod.color }}
+                  onClick={() => setShowGradcam(v => !v)}
+                >
+                  {showGradcam ? (
+                    <EyeOff size={14} />
+                  ) : (
+                    <Eye size={14} />
+                  )}
+
+                  {showGradcam
+                    ? "HIDE GRAD-CAM"
+                    : "VIEW GRAD-CAM"}
+                </button>
+
+                {showGradcam && (
+                  <div className="gradcam-img-wrap fade-in">
+
+                    <p className="gradcam-caption">
+                      <ScanEye size={12} />
+                      Gradient-weighted Class Activation Map
+                    </p>
+
+                    <img
+                      src={`data:image/jpeg;base64,${result.gradcam}`}
+                      alt="Grad-CAM"
+                    />
+
+                  </div>
+                )}
+
+              </div>
+            )}
+
           </div>
         )}
 
@@ -875,10 +977,11 @@ function AppContent() {
             </div>
           </div>
         )}
+        </div>
+        );
+        };
 
-      </div>
-    );
-  };
+  
 
   /* ════════════════════════════════════════════════════════
      FULL APPLICATION RENDER
@@ -1187,7 +1290,9 @@ function AppContent() {
       </main>
     </div>
   );
+
 }
+
 
 function App() {
   return (
