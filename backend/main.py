@@ -64,7 +64,7 @@ app.add_middleware(
 # MongoDB-backed users + server-side sessions.
 # The browser receives only an HttpOnly session cookie.
 # =====================================================
-from backend.auth import (
+from auth import (
     router as auth_router,
     require_authenticated_request,
 )
@@ -167,7 +167,9 @@ RADAR_CNN_MODEL_PATH = (
 # starts and the history feature still works without MongoDB.
 # =====================================================
 SEA_HISTORY_FILE = BASE_PATH / "backend" / "sea_prediction_history.json"
+HULL_HISTORY_FILE = BASE_PATH / "backend" / "hull_prediction_history.json"
 sea_state_collection = None
+hull_prediction_collection = None
 sea_history_backend = "json"
 
 if load_dotenv is not None:
@@ -183,11 +185,20 @@ if MONGO_URI and MongoClient is not None:
         mongo_client.admin.command("ping")
         mongo_db = mongo_client[MONGO_DB_NAME]
         sea_state_collection = mongo_db["sea_state_predictions"]
+        hull_prediction_collection = mongo_db["hull_predictions"]
+
         sea_history_backend = "mongodb"
+
         print("MongoDB connected successfully for sea-state history")
+        print("MongoDB connected successfully for hull prediction history")
+
     except Exception as e:
-        print("MongoDB unavailable; using JSON sea-state history fallback:", e)
+        print(
+            "MongoDB unavailable; using JSON history fallback:",
+            e
+        )
         sea_state_collection = None
+        hull_prediction_collection = None
 
 
 def _load_local_sea_history():
@@ -212,6 +223,33 @@ def _save_local_sea_history(history):
         print("Error saving local sea-state history:", e)
         return False
 
+def _load_local_hull_history():
+    try:
+        if not HULL_HISTORY_FILE.exists():
+            return []
+
+        with open(HULL_HISTORY_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        return data if isinstance(data, list) else []
+
+    except Exception as e:
+        print("Error loading local hull history:", e)
+        return []
+
+
+def _save_local_hull_history(history):
+    try:
+        HULL_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(HULL_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, indent=2)
+
+        return True
+
+    except Exception as e:
+        print("Error saving local hull history:", e)
+        return False
 
 # =====================================================
 # HULL DEFECT MODEL - TENSORFLOW
@@ -442,6 +480,22 @@ async def predict_hull_defect(
             if confidence < 0.7
             else "Prediction reliable."
         )
+
+        # =====================================================
+        # SAVE HULL PREDICTION TO MONGODB
+        # =====================================================
+        hull_record = {
+            "timestamp": datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+            "filename": file.filename,
+            "prediction": prediction,
+            "confidence": confidence,
+            "recommendation": recommendations[prediction],
+            "warning": warning,
+        }
+
+        save_hull_prediction_record(hull_record)
 
         return {
             "prediction": prediction,
@@ -880,6 +934,103 @@ def save_sea_history_record(record):
     history = history[-500:]
     _save_local_sea_history(history)
     return None
+
+
+def save_hull_prediction_record(record):
+    if hull_prediction_collection is not None:
+        try:
+            result = hull_prediction_collection.insert_one(record)
+            return str(result.inserted_id)
+
+        except Exception as e:
+            print(
+                "Error saving hull prediction to MongoDB; "
+                "using JSON fallback:",
+                e
+            )
+
+    history = _load_local_hull_history()
+    history.append(record)
+
+    # Keep local history bounded.
+    history = history[-500:]
+
+    _save_local_hull_history(history)
+
+    return None
+
+@app.get(
+    "/hull-prediction-history",
+    dependencies=[Depends(require_authenticated_request)]
+)
+def get_hull_prediction_history():
+
+    if hull_prediction_collection is not None:
+        try:
+            history = list(
+                hull_prediction_collection.find(
+                    {},
+                    {"_id": 0}
+                ).sort(
+                    "timestamp",
+                    -1
+                )
+            )
+
+            return {
+                "history": history,
+                "storage": "mongodb"
+            }
+
+        except Exception as e:
+            print(
+                "Error loading hull prediction history from MongoDB; "
+                "using JSON fallback:",
+                e
+            )
+
+    history = list(
+        reversed(
+            _load_local_hull_history()
+        )
+    )
+
+    return {
+        "history": history,
+        "storage": "json"
+    }
+
+@app.delete(
+    "/hull-prediction-history",
+    dependencies=[Depends(require_authenticated_request)]
+)
+def clear_hull_prediction_history():
+
+    deleted_count = 0
+
+    if hull_prediction_collection is not None:
+        try:
+            result = hull_prediction_collection.delete_many({})
+
+            deleted_count = result.deleted_count
+
+        except Exception as e:
+            print(
+                "Error clearing hull prediction history from MongoDB:",
+                e
+            )
+
+    local_history = _load_local_hull_history()
+
+    if local_history:
+        deleted_count += len(local_history)
+
+    _save_local_hull_history([])
+
+    return {
+        "message": "Hull prediction history cleared successfully",
+        "deleted_count": deleted_count
+    }
 
 
 @app.post("/predict-sea-state", dependencies=[Depends(require_authenticated_request)])
@@ -1664,7 +1815,7 @@ async def predict_radar_object(
 # routes are defined. backend/simulation/app.py no longer
 # creates another FastAPI application.
 # =====================================================
-from backend.simulation.app import (
+from simulation.app import (
     router as simulation_router,
 )
 
