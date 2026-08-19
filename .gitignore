@@ -31,6 +31,7 @@ runs/
 
 # Dataset caches
 *.cache
+.env
 
 # Downloaded pretrained/base weights
 yolo11n-cls.pt
@@ -44,3 +45,29 @@ ml/models/*.pth
 !ml/models/final/*.pth
 !ml/models/final/*.pt
 ml/notebooks/
+
+# R26-IT-003 local research datasets / generated data
+ml/external_datasets/
+ml/ais_motion/
+ml/models/ais_motion/
+ml/synthetic_radar/
+
+# Runtime generated files
+backend/temp/
+backend/uploads/
+
+# Local backups and archives
+backend.before-simulation/
+frontend.before-simulation/
+backup-before-single-backend/
+*.zip
+
+# Python / macOS
+__pycache__/
+*.pyc
+.DS_Store
+
+# Node dependencies - never commit
+backend/node_modules/
+frontend/node_modules/
+backend/.env

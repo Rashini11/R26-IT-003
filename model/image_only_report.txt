@@ -1,5 +1,4 @@
-IMAGE-ONLY SEA STATE CLASSIFICATION REPORT
-==========================================
+--IMAGE-ONLY SEA STATE CLASSIFICATION REPORT
 
 Dataset Size: 7200
 Train Size: 5040
@@ -31,4 +30,4 @@ Confusion Matrix:
 [[267   2   0   0]
  [  1 270   1   0]
  [  1   4 266   0]
- [  0   0   0 268]]
+ [  0   0   0 268]]                                                            
