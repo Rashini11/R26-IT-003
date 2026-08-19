@@ -1,0 +1,121 @@
+{
+  "dataset": {
+    "test_images": 2400,
+    "classes": [
+      "bird",
+      "ship",
+      "unknown"
+    ],
+    "images_per_class": {
+      "bird": 800,
+      "ship": 800,
+      "unknown": 800
+    }
+  },
+  "model_accuracy_percent": {
+    "deepercnn": 94.58,
+    "yolo11_medium": 99.92
+  },
+  "agreement_verification": {
+    "accepted_predictions": 2268,
+    "manual_review_predictions": 132,
+    "coverage_percent": 94.5,
+    "manual_review_rate_percent": 5.5,
+    "accepted_prediction_accuracy_percent": 100.0,
+    "accepted_but_incorrect_predictions": 0
+  },
+  "inference_time": {
+    "cnn_ms_per_image": 0.15,
+    "yolo_ms_per_image": 2.31,
+    "combined_ms_per_image": 2.46
+  },
+  "per_class_verification": {
+    "bird": {
+      "test_images": 800,
+      "accepted_images": 800,
+      "manual_review_images": 0,
+      "coverage_percent": 100.0,
+      "accepted_accuracy_percent": 100.0
+    },
+    "ship": {
+      "test_images": 800,
+      "accepted_images": 752,
+      "manual_review_images": 48,
+      "coverage_percent": 94.0,
+      "accepted_accuracy_percent": 100.0
+    },
+    "unknown": {
+      "test_images": 800,
+      "accepted_images": 716,
+      "manual_review_images": 84,
+      "coverage_percent": 89.5,
+      "accepted_accuracy_percent": 100.0
+    }
+  },
+  "cnn_classification_report": {
+    "bird": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 800.0
+    },
+    "ship": {
+      "precision": 0.9016786570743405,
+      "recall": 0.94,
+      "f1-score": 0.9204406364749081,
+      "support": 800.0
+    },
+    "unknown": {
+      "precision": 0.9373368146214099,
+      "recall": 0.8975,
+      "f1-score": 0.9169859514687101,
+      "support": 800.0
+    },
+    "accuracy": 0.9458333333333333,
+    "macro avg": {
+      "precision": 0.9463384905652501,
+      "recall": 0.9458333333333333,
+      "f1-score": 0.9458088626478727,
+      "support": 2400.0
+    },
+    "weighted avg": {
+      "precision": 0.94633849056525,
+      "recall": 0.9458333333333333,
+      "f1-score": 0.9458088626478728,
+      "support": 2400.0
+    }
+  },
+  "yolo_classification_report": {
+    "bird": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 800.0
+    },
+    "ship": {
+      "precision": 0.9975062344139651,
+      "recall": 1.0,
+      "f1-score": 0.9987515605493134,
+      "support": 800.0
+    },
+    "unknown": {
+      "precision": 1.0,
+      "recall": 0.9975,
+      "f1-score": 0.9987484355444305,
+      "support": 800.0
+    },
+    "accuracy": 0.9991666666666666,
+    "macro avg": {
+      "precision": 0.999168744804655,
+      "recall": 0.9991666666666666,
+      "f1-score": 0.9991666653645813,
+      "support": 2400.0
+    },
+    "weighted avg": {
+      "precision": 0.999168744804655,
+      "recall": 0.9991666666666666,
+      "f1-score": 0.9991666653645812,
+      "support": 2400.0
+    }
+  }
+}
