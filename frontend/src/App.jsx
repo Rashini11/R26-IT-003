@@ -1016,15 +1016,15 @@ function AppContent() {
                 <div className="boat-analysis-summary" style={{ borderColor: mod.colorMid }}>
                   <div>
                     <span>LOCAL SHIPS</span>
-                    <strong>{result.results.filter((item) => item.label === "Local Ship").length}</strong>
+                    <strong>{result.results.filter((item) => item.detection_type === "ship" && item.label === "Local Ship").length}</strong>
                   </div>
                   <div>
                     <span>FOREIGN SHIPS</span>
-                    <strong>{result.results.filter((item) => item.label === "Foreign Ship").length}</strong>
+                    <strong>{result.results.filter((item) => item.detection_type === "ship" && item.label === "Foreign Ship").length}</strong>
                   </div>
                   <div>
                     <span>FLAG EVIDENCE</span>
-                    <strong>{result.results.filter((item) => item.sl_flag_detected).length}</strong>
+                    <strong>{result.results.filter((item) => item.detection_type === "flag").length}</strong>
                   </div>
                 </div>
                 <div className="result-primary-row">

@@ -1533,7 +1533,16 @@ async def predict_boat_detection(
             image_height, image_width = results[0].orig_shape[:2]
             image_size = [int(image_width), int(image_height)]
         ship_detections = []
+        flag_detections = []
         for detection in detections:
+            if detection["class_id"] == 1:
+                flag_detections.append({
+                    "label": "SL Flag",
+                    "confidence": detection["confidence"],
+                    "box": detection["box"],
+                    "detection_type": "flag",
+                })
+                continue
             if detection["class_id"] != 0:
                 continue
 
@@ -1546,19 +1555,22 @@ async def predict_boat_detection(
                 "confidence": detection["confidence"],
                 "sl_flag_detected": is_local,
                 "box": detection["box"],
+                "detection_type": "ship",
             })
+
+        all_detections = ship_detections + flag_detections
 
         confidence_value = round(max((d["confidence"] for d in ship_detections), default=0), 1)
 
         return {
             "image": file.filename,
-            "status": "Detected" if ship_detections else "No Boat Detected",
+            "status": "Detected" if all_detections else "No Boat Detected",
             "confidence": confidence_value,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "source": "Drone",
             "estimated_size": infer_estimated_size(ship_detections),
             "vessel_origin": infer_vessel_origin(ship_detections),
-            "results": ship_detections,
+            "results": all_detections,
             "count": len(ship_detections),
             "image_size": image_size,
             "demo": False,
