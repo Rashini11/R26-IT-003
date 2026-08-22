@@ -917,6 +917,13 @@ p { margin: 0; }
   gap: 14px;
 }
 
+.boat-result-details {
+  padding: 8px 14px;
+  border: 1px solid;
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.2);
+}
+
 /* Prediction text block */
 .result-pred-block {
   flex: 1;

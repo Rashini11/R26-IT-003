@@ -1052,6 +1052,12 @@ function AppContent() {
                     </div>
                   ))}
                 </div>
+              
+                <div className="boat-result-details" style={{ borderColor: mod.colorMid }}>
+                  <DataRow label="ESTIMATED SIZE" value={result.estimated_size || "Medium Vessel"} color={mod.color} />
+                  <DataRow label="STATUS" value={result.status || "Detected"} color="#00ffb3" />
+                </div>
+
                 <button className="boat-download-btn" onClick={downloadBoatAnalysis}>
                   <Download size={14} /> DOWNLOAD ANNOTATED IMAGE
                 </button>
