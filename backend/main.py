@@ -131,18 +131,13 @@ LABEL_MAP_PATH = os.path.join(
     "label_map.json",
 )
 
-BOAT_MODEL_PATH = (
-    BASE_PATH
-    / "model"
-    / "boat_detection.pt"
-)
+BOAT_MODEL_PATH = BASE_PATH / "backend" / "best.pt"
 
 if not BOAT_MODEL_PATH.exists():
-    BOAT_MODEL_PATH = (
-        BASE_PATH
-        / "model"
-        / "boat_detection_last.pt"
-    )
+    BOAT_MODEL_PATH = BASE_PATH / "model" / "boat_detection.pt"
+
+if not BOAT_MODEL_PATH.exists():
+    BOAT_MODEL_PATH = BASE_PATH / "model" / "boat_detection_last.pt"
 
 RADAR_YOLO_MODEL_PATH = (
     BASE_PATH
@@ -1316,15 +1311,12 @@ def infer_vessel_origin(detections):
 
     top_detection = max(detections, key=lambda item: item.get("confidence", 0))
     label = (top_detection.get("label") or "").lower()
-    confidence = top_detection.get("confidence", 0)
 
-    if any(keyword in label for keyword in ["cargo", "container", "ship", "vessel"]):
-        return "Foreign Boat" if confidence >= 80 else "Local Boat"
-
-    if any(keyword in label for keyword in ["fishing", "small", "boat"]):
-        return "Local Boat"
-
-    return "Local Boat" if confidence >= 70 else "Foreign Boat"
+    if "local ship" in label:
+        return "Local Ship"
+    if "foreign ship" in label:
+        return "Foreign Ship"
+    return "Unknown"
 
 
 def infer_estimated_size(detections):
@@ -1342,6 +1334,21 @@ def infer_estimated_size(detections):
         return "Small Vessel"
 
     return "Medium Vessel"
+
+
+def ship_has_local_flag(ship_box, flag_boxes, min_overlap=0.25):
+    """Match an sl_flag to a ship using the fraction of flag area overlapped."""
+    flag_x1, flag_y1, flag_x2, flag_y2 = flag_boxes
+    flag_area = max(0, flag_x2 - flag_x1) * max(0, flag_y2 - flag_y1)
+    if flag_area <= 0:
+        return False
+
+    ship_x1, ship_y1, ship_x2, ship_y2 = ship_box
+    intersection = max(0, min(ship_x2, flag_x2) - max(ship_x1, flag_x1)) * max(
+        0,
+        min(ship_y2, flag_y2) - max(ship_y1, flag_y1),
+    )
+    return intersection / flag_area >= min_overlap
 
 
 def build_demo_boat_detection_response():
@@ -1397,17 +1404,11 @@ except Exception as e:
     boat_model = None
 
 
-<<<<<<< HEAD
 @app.get("/demo-boat-detection")
 async def get_demo_boat_detection():
     return build_demo_boat_detection_response()
 
 
-@app.post("/predict-boat-detection")
-async def predict_boat_detection(file: UploadFile = File(...)):
-    if boat_model is None:
-        return build_demo_boat_detection_response()
-=======
 @app.post("/predict-boat-detection", dependencies=[Depends(require_authenticated_request)])
 async def predict_boat_detection(
     file: UploadFile = File(...),
@@ -1419,8 +1420,7 @@ async def predict_boat_detection(
                 "not loaded"
             )
         }
->>>>>>> 1a1db97d707f055c0380e77678b4a731c5c8918c
-
+    
     try:
         if not file.filename:
             return {
@@ -1504,15 +1504,12 @@ async def predict_boat_detection(
                             )
                         )
 
-                        detections.append(
-                            {
-                                "label": label,
-                                "confidence": round(
-                                    conf * 100,
-                                    1,
-                                ),
-                            }
-                        )
+                        detections.append({
+                            "class_id": cls_id,
+                            "label": label,
+                            "confidence": round(conf * 100, 1),
+                            "box": [float(value) for value in box.xyxy[0].tolist()],
+                        })
 
                     except Exception as e:
                         print(
@@ -1526,25 +1523,45 @@ async def predict_boat_detection(
             missing_ok=True
         )
 
-        confidence_value = round(max((d["confidence"] for d in detections), default=0), 1)
+        flag_boxes = [
+            detection["box"]
+            for detection in detections
+            if detection["class_id"] == 1
+        ]
+        image_size = None
+        if results and len(results) > 0 and results[0].orig_shape:
+            image_height, image_width = results[0].orig_shape[:2]
+            image_size = [int(image_width), int(image_height)]
+        ship_detections = []
+        for detection in detections:
+            if detection["class_id"] != 0:
+                continue
+
+            is_local = any(
+                ship_has_local_flag(detection["box"], flag_box)
+                for flag_box in flag_boxes
+            )
+            ship_detections.append({
+                "label": "Local Ship" if is_local else "Foreign Ship",
+                "confidence": detection["confidence"],
+                "sl_flag_detected": is_local,
+                "box": detection["box"],
+            })
+
+        confidence_value = round(max((d["confidence"] for d in ship_detections), default=0), 1)
 
         return {
             "image": file.filename,
-            "status": "Detected" if detections else "No Boat Detected",
+            "status": "Detected" if ship_detections else "No Boat Detected",
             "confidence": confidence_value,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "source": "Drone",
-            "estimated_size": infer_estimated_size(detections),
-            "vessel_origin": infer_vessel_origin(detections),
-            "results": detections,
-<<<<<<< HEAD
-            "count": len(detections),
+            "estimated_size": infer_estimated_size(ship_detections),
+            "vessel_origin": infer_vessel_origin(ship_detections),
+            "results": ship_detections,
+            "count": len(ship_detections),
+            "image_size": image_size,
             "demo": False,
-=======
-            "count": len(
-                detections
-            ),
->>>>>>> 1a1db97d707f055c0380e77678b4a731c5c8918c
         }
 
     except Exception as e:

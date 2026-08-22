@@ -38,6 +38,7 @@ yolo11n-cls.pt
 yolo11s-cls.pt
 yolo11m-cls.pt
 yolov8n.pt
+best.pt
 
 # Old/extra local checkpoints
 ml/models/*.pth

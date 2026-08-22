@@ -37,6 +37,7 @@ import {
   Network,
   Globe,
   Layers,
+  Download,
   Navigation,
   UserRoundCog,
   LockKeyhole,
@@ -324,6 +325,67 @@ function ProbBar({ label, value, color }) {
   );
 }
 
+function BoatDetectionOverlay({ result, color }) {
+  const [imageWidth, imageHeight] = result?.image_size || [];
+  const detections = result?.results?.filter((detection) => (
+    Array.isArray(detection.box) && detection.box.length === 4
+  )) || [];
+
+  if (!imageWidth || !imageHeight || detections.length === 0) return null;
+
+  return (
+    <svg
+      className="boat-detection-overlay"
+      viewBox={`0 0 ${imageWidth} ${imageHeight}`}
+      preserveAspectRatio="xMidYMid meet"
+      aria-label="Boat detection labels"
+    >
+      {detections.map((detection, index) => {
+        const [x1, y1, x2, y2] = detection.box;
+        const boxWidth = Math.max(1, x2 - x1);
+        const boxHeight = Math.max(1, y2 - y1);
+        const label = `${detection.label} ${detection.confidence}%`;
+        const labelWidth = Math.min(imageWidth - x1, Math.max(120, label.length * 8));
+        const labelY = Math.max(18, y1);
+        const isLocal = detection.label === "Local Ship";
+        const boxColor = isLocal ? "#00ffb3" : color;
+
+        return (
+          <g key={`${detection.label}-${index}`}>
+            <rect
+              x={x1}
+              y={y1}
+              width={boxWidth}
+              height={boxHeight}
+              fill="none"
+              stroke={boxColor}
+              strokeWidth={Math.max(2, imageWidth / 160)}
+            />
+            <rect
+              x={x1}
+              y={labelY - 18}
+              width={labelWidth}
+              height="18"
+              fill={boxColor}
+              opacity="0.92"
+            />
+            <text
+              x={x1 + 5}
+              y={labelY - 5}
+              fill="#041018"
+              fontSize={Math.max(10, imageWidth / 32)}
+              fontWeight="700"
+              fontFamily="monospace"
+            >
+              {label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 /* ══════════════════════════════════════════════════════════
    MAIN APP COMPONENT
    ══════════════════════════════════════════════════════════ */
@@ -434,6 +496,48 @@ function AppContent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const downloadBoatAnalysis = async () => {
+    if (activeModule !== "boat" || !preview || !result?.results?.length) return;
+
+    const image = new Image();
+    image.src = preview;
+    await image.decode();
+
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext("2d");
+    context.drawImage(image, 0, 0);
+
+    const scaleX = image.naturalWidth / (result.image_size?.[0] || image.naturalWidth);
+    const scaleY = image.naturalHeight / (result.image_size?.[1] || image.naturalHeight);
+    context.font = `700 ${Math.max(14, image.naturalWidth / 42)}px monospace`;
+    result.results.forEach((detection) => {
+      if (!Array.isArray(detection.box) || detection.box.length !== 4) return;
+      const [x1, y1, x2, y2] = detection.box.map((value) => Number(value));
+      const left = x1 * scaleX;
+      const top = y1 * scaleY;
+      const width = (x2 - x1) * scaleX;
+      const height = (y2 - y1) * scaleY;
+      const boxColor = detection.label === "Local Ship" ? "#00ffb3" : "#a78bfa";
+      const label = `${detection.label} ${detection.confidence}%`;
+      const labelHeight = Math.max(24, image.naturalWidth / 32);
+      const labelWidth = context.measureText(label).width + 16;
+      context.strokeStyle = boxColor;
+      context.lineWidth = Math.max(3, image.naturalWidth / 160);
+      context.strokeRect(left, top, width, height);
+      context.fillStyle = boxColor;
+      context.fillRect(left, Math.max(0, top - labelHeight), labelWidth, labelHeight);
+      context.fillStyle = "#041018";
+      context.fillText(label, left + 8, Math.max(16, top - 8));
+    });
+
+    const link = document.createElement("a");
+    link.download = `boat-analysis-${Date.now()}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
   };
 
   /* ── Sea-state PDF report from the Sea-State branch ── */
@@ -902,41 +1006,27 @@ function AppContent() {
           </div>
         )}
 
-<<<<<<< HEAD
-        {mode === "boat" && (
-          <>
-            <div className="boat-summary-card">
-              <div>
-                <p className="section-label">Detection Summary</p>
-                <h3>{result.status || "Detected"}</h3>
-              </div>
-              <div className="confidence-badge">
-                {result.confidence ? `${result.confidence}%` : "—"}
-              </div>
-            </div>
-
-            <ResultItem label="Status" value={result.status || "Detected"} />
-            <ResultItem label="Confidence" value={`${result.confidence}%`} />
-            <ResultItem label="Timestamp" value={result.timestamp || "N/A"} />
-            <ResultItem label="Source" value={result.source || "Drone"} />
-            <ResultItem
-              label="Estimated Size"
-              value={result.estimated_size || "Medium Vessel"}
-            />
-            <ResultItem
-              label="Vessel Origin"
-              value={result.vessel_origin || "Local Boat"}
-            />
-
-=======
         {/* ══════════════════════════
             BOAT DETECTION results
             ══════════════════════════ */}
         {activeModule === "boat" && (
           <div className="result-body">
->>>>>>> 1a1db97d707f055c0380e77678b4a731c5c8918c
             {result.results && result.results.length > 0 ? (
               <>
+                <div className="boat-analysis-summary" style={{ borderColor: mod.colorMid }}>
+                  <div>
+                    <span>LOCAL SHIPS</span>
+                    <strong>{result.results.filter((item) => item.label === "Local Ship").length}</strong>
+                  </div>
+                  <div>
+                    <span>FOREIGN SHIPS</span>
+                    <strong>{result.results.filter((item) => item.label === "Foreign Ship").length}</strong>
+                  </div>
+                  <div>
+                    <span>FLAG EVIDENCE</span>
+                    <strong>{result.results.filter((item) => item.sl_flag_detected).length}</strong>
+                  </div>
+                </div>
                 <div className="result-primary-row">
                   <div className="result-pred-block" style={{ borderColor: mod.colorMid }}>
                     <p className="rpb-eye">VESSELS DETECTED</p>
@@ -962,6 +1052,9 @@ function AppContent() {
                     </div>
                   ))}
                 </div>
+                <button className="boat-download-btn" onClick={downloadBoatAnalysis}>
+                  <Download size={14} /> DOWNLOAD ANNOTATED IMAGE
+                </button>
               </>
             ) : (
               <div className="empty-result">
@@ -1246,6 +1339,9 @@ function AppContent() {
               {preview ? (
                 <div className="preview-img-wrap">
                   <img src={preview} alt="Preview" className="preview-img" />
+                  {activeModule === "boat" && !loading && (
+                    <BoatDetectionOverlay result={result} color={mod.color} />
+                  )}
                   {/* Scan-line overlay shown while model is running */}
                   {loading && (
                     <div className="scan-overlay">
