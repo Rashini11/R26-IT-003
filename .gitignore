@@ -1,5 +1,6 @@
 # Python environment
 venv/
+backend/.venv/
 .env
 
 # Python cache
@@ -30,12 +31,14 @@ runs/
 
 # Dataset caches
 *.cache
+.env
 
 # Downloaded pretrained/base weights
 yolo11n-cls.pt
 yolo11s-cls.pt
 yolo11m-cls.pt
 yolov8n.pt
+best.pt
 
 # Old/extra local checkpoints
 ml/models/*.pth
@@ -64,3 +67,8 @@ backup-before-single-backend/
 __pycache__/
 *.pyc
 .DS_Store
+
+# Node dependencies - never commit
+backend/node_modules/
+frontend/node_modules/
+backend/.env

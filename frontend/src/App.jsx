@@ -14,6 +14,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
+import { jsPDF } from "jspdf";
 import {
   Anchor,
   Waves,
@@ -36,15 +37,22 @@ import {
   Network,
   Globe,
   Layers,
+  Download,
   Navigation,
+  UserRoundCog,
+  LockKeyhole,
 } from "lucide-react";
 import LiveSimulation from "./LiveSimulation";
+import ProtectedRoute from "./components/ProtectedRoute";
+import LogoutButton from "./components/LogoutButton";
+import AdminUsers from "./components/AdminUsers";
+import { useAuth } from "./context/AuthContext";
 import "./App.css";
 
 /* ══════════════════════════════════════════════════════════
    BACKEND CONFIGURATION — do not modify endpoint names
    ══════════════════════════════════════════════════════════ */
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = "http://localhost:8000";
 
 /* ══════════════════════════════════════════════════════════
    MODULE DEFINITIONS
@@ -57,7 +65,7 @@ const MODULES = {
     label: "Hull Defect",
     title: "Hull Defect Detection",
     endpoint: `${API_BASE_URL}/predict-hull-defect`,
-    description: "CNN-based detection of corrosion, cracks, and biofouling with Grad-CAM explainability.",
+    description: "CNN-based detection of corrosion, cracks, and biofouling, and paint damage with Grad-CAM explainability.",
     icon: Anchor,
     color: "#00d4ff",
     colorDim: "#00d4ff22",
@@ -317,10 +325,72 @@ function ProbBar({ label, value, color }) {
   );
 }
 
+function BoatDetectionOverlay({ result, color }) {
+  const [imageWidth, imageHeight] = result?.image_size || [];
+  const detections = result?.results?.filter((detection) => (
+    Array.isArray(detection.box) && detection.box.length === 4
+  )) || [];
+
+  if (!imageWidth || !imageHeight || detections.length === 0) return null;
+
+  return (
+    <svg
+      className="boat-detection-overlay"
+      viewBox={`0 0 ${imageWidth} ${imageHeight}`}
+      preserveAspectRatio="xMidYMid meet"
+      aria-label="Boat detection labels"
+    >
+      {detections.map((detection, index) => {
+        const [x1, y1, x2, y2] = detection.box;
+        const boxWidth = Math.max(1, x2 - x1);
+        const boxHeight = Math.max(1, y2 - y1);
+        const label = `${detection.label} ${detection.confidence}%`;
+        const labelWidth = Math.min(imageWidth - x1, Math.max(120, label.length * 8));
+        const labelY = Math.max(18, y1);
+        const isLocal = detection.label === "Local Ship";
+        const boxColor = isLocal ? "#00ffb3" : color;
+
+        return (
+          <g key={`${detection.label}-${index}`}>
+            <rect
+              x={x1}
+              y={y1}
+              width={boxWidth}
+              height={boxHeight}
+              fill="none"
+              stroke={boxColor}
+              strokeWidth={Math.max(2, imageWidth / 160)}
+            />
+            <rect
+              x={x1}
+              y={labelY - 18}
+              width={labelWidth}
+              height="18"
+              fill={boxColor}
+              opacity="0.92"
+            />
+            <text
+              x={x1 + 5}
+              y={labelY - 5}
+              fill="#041018"
+              fontSize={Math.max(10, imageWidth / 32)}
+              fontWeight="700"
+              fontFamily="monospace"
+            >
+              {label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 /* ══════════════════════════════════════════════════════════
    MAIN APP COMPONENT
    ══════════════════════════════════════════════════════════ */
-export default function App() {
+function AppContent() {
+  const { user, canWrite, isAdmin, accessLevel } = useAuth();
 
   /* ── Application state ── */
   const [activeModule, setActiveModule] = useState("hull");
@@ -331,18 +401,45 @@ export default function App() {
   const [showGradcam, setShowGradcam] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile sidebar toggle
+  const [applyEnhancement, setApplyEnhancement] = useState(false);
+  const [seaHistory, setSeaHistory] = useState([]);
+  const [seaHistoryLoading, setSeaHistoryLoading] = useState(false);
+  const [showAccessAdmin, setShowAccessAdmin] = useState(false);
 
   const mod = MODULES[activeModule];
   const ModIcon = mod.icon;
 
+  /* ── Sea-state history helpers ── */
+  const fetchSeaHistory = useCallback(async () => {
+    try {
+      setSeaHistoryLoading(true);
+      const { data } = await axios.get(`${API_BASE_URL}/sea-state-history`);
+      setSeaHistory(data.history || []);
+    } catch (error) {
+      console.error("Failed to load sea-state history:", error);
+    } finally {
+      setSeaHistoryLoading(false);
+    }
+  }, []);
+
+  const clearSeaHistory = async () => {
+    if (!canWrite) return;
+    try {
+      await axios.delete(`${API_BASE_URL}/sea-state-history`);
+      setSeaHistory([]);
+    } catch (error) {
+      console.error("Failed to clear sea-state history:", error);
+    }
+  };
+
   /* ── File selection handler ── */
   const processFile = useCallback((f) => {
-    if (!f || !f.type.startsWith("image/")) return;
+    if (!canWrite || !f || !f.type.startsWith("image/")) return;
     setFile(f);
     setResult(null);
     setShowGradcam(false);
     setPreview(URL.createObjectURL(f));
-  }, []);
+  }, [canWrite]);
 
   const handleFileChange = (e) => processFile(e.target.files[0]);
 
@@ -360,7 +457,9 @@ export default function App() {
     setPreview(null);
     setResult(null);
     setShowGradcam(false);
+    setApplyEnhancement(false);
     setSidebarOpen(false);
+    if (id === "sea") fetchSeaHistory();
   };
 
   /* ══════════════════════════════════════════════
@@ -370,16 +469,24 @@ export default function App() {
      All original endpoints are preserved.
      ══════════════════════════════════════════════ */
   const runPrediction = async () => {
-    if (!file || loading) return;
+    if (!file || loading || !canWrite) return;
     const form = new FormData();
     form.append("file", file);
+    if (activeModule === "sea") {
+      form.append("apply_enhancement", applyEnhancement);
+    }
     try {
       setLoading(true);
       setResult(null);
       const { data } = await axios.post(mod.endpoint, form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setResult(data);
+      if (data?.error) {
+        setResult({ __error: true, message: data.error, details: data.validation });
+      } else {
+        setResult(data);
+      }
+      if (activeModule === "sea") fetchSeaHistory();
     } catch (err) {
       console.error("Prediction error:", err);
       setResult({
@@ -389,6 +496,201 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const downloadBoatAnalysis = async () => {
+    if (activeModule !== "boat" || !preview || !result?.results?.length) return;
+
+    const image = new Image();
+    image.src = preview;
+    await image.decode();
+
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext("2d");
+    context.drawImage(image, 0, 0);
+
+    const scaleX = image.naturalWidth / (result.image_size?.[0] || image.naturalWidth);
+    const scaleY = image.naturalHeight / (result.image_size?.[1] || image.naturalHeight);
+    context.font = `700 ${Math.max(14, image.naturalWidth / 42)}px monospace`;
+    result.results.forEach((detection) => {
+      if (!Array.isArray(detection.box) || detection.box.length !== 4) return;
+      const [x1, y1, x2, y2] = detection.box.map((value) => Number(value));
+      const left = x1 * scaleX;
+      const top = y1 * scaleY;
+      const width = (x2 - x1) * scaleX;
+      const height = (y2 - y1) * scaleY;
+      const boxColor = detection.label === "Local Ship" ? "#00ffb3" : "#a78bfa";
+      const label = `${detection.label} ${detection.confidence}%`;
+      const labelHeight = Math.max(24, image.naturalWidth / 32);
+      const labelWidth = context.measureText(label).width + 16;
+      context.strokeStyle = boxColor;
+      context.lineWidth = Math.max(3, image.naturalWidth / 160);
+      context.strokeRect(left, top, width, height);
+      context.fillStyle = boxColor;
+      context.fillRect(left, Math.max(0, top - labelHeight), labelWidth, labelHeight);
+      context.fillStyle = "#041018";
+      context.fillText(label, left + 8, Math.max(16, top - 8));
+    });
+
+    const link = document.createElement("a");
+    link.download = `boat-analysis-${Date.now()}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  };
+
+  /* ── Sea-state PDF report from the Sea-State branch ── */
+  const generateSeaStatePDF = () => {
+    if (!result || activeModule !== "sea" || result.__error) return;
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 20;
+    const contentWidth = pageWidth - margin * 2;
+    let y = 20;
+
+    const addFooter = () => {
+      const pageNumber = doc.internal.getNumberOfPages();
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.text("OceanIQ - Marine AI Intelligence Platform", margin, pageHeight - 10);
+      doc.text(`Page ${pageNumber}`, pageWidth - margin, pageHeight - 10, { align: "right" });
+    };
+
+    const checkPageSpace = (requiredSpace = 10) => {
+      if (y + requiredSpace > pageHeight - 25) {
+        addFooter();
+        doc.addPage();
+        y = 20;
+      }
+    };
+
+    const addTitle = (title) => {
+      checkPageSpace(15);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(0, 120, 180);
+      doc.text(title, margin, y);
+      y += 8;
+    };
+
+    const addText = (text, indent = 0) => {
+      if (text === undefined || text === null) return;
+      const lines = doc.splitTextToSize(String(text), contentWidth - indent);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(30, 30, 30);
+      lines.forEach((line) => {
+        checkPageSpace(6);
+        doc.text(line, margin + indent, y);
+        y += 5.5;
+      });
+      y += 1;
+    };
+
+    const addKeyValue = (label, value) => {
+      checkPageSpace(8);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(30, 30, 30);
+      doc.text(`${label}:`, margin, y);
+      doc.setFont("helvetica", "normal");
+      const labelWidth = doc.getTextWidth(`${label}: `);
+      const lines = doc.splitTextToSize(String(value ?? "N/A"), contentWidth - labelWidth);
+      doc.text(lines[0], margin + labelWidth, y);
+      y += 5.5;
+      for (let i = 1; i < lines.length; i += 1) {
+        checkPageSpace(6);
+        doc.text(lines[i], margin + labelWidth, y);
+        y += 5.5;
+      }
+      y += 1;
+    };
+
+    const addBullet = (text) => {
+      const lines = doc.splitTextToSize(String(text), contentWidth - 8);
+      lines.forEach((line, index) => {
+        checkPageSpace(6);
+        doc.text(index === 0 ? `• ${line}` : `  ${line}`, margin + 3, y);
+        y += 5.5;
+      });
+      y += 1;
+    };
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.setTextColor(20, 20, 20);
+    doc.text("OceanIQ Marine AI Intelligence Platform", pageWidth / 2, y, { align: "center" });
+    y += 9;
+    doc.setFontSize(15);
+    doc.setTextColor(0, 120, 180);
+    doc.text("Sea State Classification Report", pageWidth / 2, y, { align: "center" });
+    y += 12;
+    doc.setDrawColor(0, 160, 200);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 10;
+
+    addTitle("Prediction Information");
+    addKeyValue("File", result.filename || "N/A");
+    addKeyValue("Timestamp", result.timestamp || new Date().toLocaleString());
+    addKeyValue("Processing Time", `${result.processing_time ?? "N/A"} sec`);
+    addKeyValue("Enhancement Applied", result.enhancement_applied ? "Yes" : "No");
+    y += 3;
+
+    addTitle("Sea State Classification");
+    addKeyValue("Predicted Sea State", String(result.predicted_sea_state || "N/A").toUpperCase());
+    addKeyValue("AI Confidence", `${result.confidence ?? 0}%`);
+    y += 3;
+
+    addTitle("Overall Risk");
+    addKeyValue("Risk Level", result.risk_indicator?.level || "N/A");
+    addKeyValue("Risk Score", `${result.risk_indicator?.score ?? "N/A"}/100`);
+    addKeyValue("Risk Factors", result.risk_indicator?.reasons?.length ? result.risk_indicator.reasons.join(", ") : "None");
+    y += 3;
+
+    addTitle("Class Probabilities");
+    Object.entries(result.probabilities || {}).forEach(([label, probability]) => {
+      addKeyValue(label, `${probability}%`);
+    });
+    y += 3;
+
+    addTitle("Image Quality Analysis");
+    if (result.image_quality) {
+      addKeyValue("Brightness", `${result.image_quality.brightness_status} (${result.image_quality.brightness_value})`);
+      addKeyValue("Contrast", `${result.image_quality.contrast_status} (${result.image_quality.contrast_value})`);
+      addKeyValue("Sharpness", `${result.image_quality.sharpness_status} (${result.image_quality.sharpness_value})`);
+      addKeyValue("Visibility", result.image_quality.visibility_status);
+    }
+    y += 3;
+
+    addTitle("Decision Support Recommendation");
+    if (result.recommendation) {
+      addKeyValue("Risk Level", result.recommendation.risk_level);
+      addText(result.recommendation.message);
+    }
+
+    addTitle("Weather Suitability");
+    if (result.weather_suitability) {
+      addKeyValue("Condition", result.weather_suitability.condition);
+      addKeyValue("Suitability Score", `${result.weather_suitability.score}/100`);
+      if (result.weather_suitability.operations?.length) {
+        addText("Suitable Operations:");
+        result.weather_suitability.operations.forEach(addBullet);
+      }
+      addKeyValue("Reason", result.weather_suitability.reason);
+    }
+
+    addTitle("System Warnings");
+    if (result.warnings?.length) result.warnings.forEach(addBullet);
+    else addText("No system warnings.");
+
+    addFooter();
+    const filename = result.filename
+      ? `Sea_State_Report_${result.filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`
+      : "Sea_State_Prediction_Report.pdf";
+    doc.save(filename);
   };
 
   /* ══════════════════════════════════════════════
@@ -415,61 +717,163 @@ export default function App() {
       );
     }
 
-    return (
+        return (
       <div className="result-section fade-in">
 
-        {/* Result header bar — shows module name and success indicator */}
-        <div className="result-header" style={{ borderColor: mod.colorMid }}>
-          <div className="result-badge"
-            style={{ background: mod.colorDim, color: mod.color, borderColor: mod.colorMid }}>
+        {/* Result header bar */}
+        <div
+          className="result-header"
+          style={{ borderColor: mod.colorMid }}
+        >
+          <div
+            className="result-badge"
+            style={{
+              background: mod.colorDim,
+              color: mod.color,
+              borderColor: mod.colorMid,
+            }}
+          >
             <CheckCircle2 size={12} />
             ANALYSIS COMPLETE
           </div>
-          <span className="result-hdr-module" style={{ color: mod.color }}>
+
+          <span
+            className="result-hdr-module"
+            style={{ color: mod.color }}
+          >
             {mod.statusLabel}
           </span>
         </div>
+
+        
 
         {/* ══════════════════════════
             HULL DEFECT results
             ══════════════════════════ */}
         {activeModule === "hull" && (
+          
           <div className="result-body">
 
-            {/* Primary: prediction label + confidence ring side by side */}
-            <div className="result-primary-row">
-              <div className="result-pred-block" style={{ borderColor: mod.colorMid }}>
-                <p className="rpb-eye">DETECTED CONDITION</p>
-                <p className="rpb-val" style={{ color: mod.color }}>{result.prediction}</p>
-                <p className="rpb-sub">Conf: {(result.confidence * 100).toFixed(2)}%</p>
-              </div>
-              <ConfidenceRing value={result.confidence * 100} color={mod.color} />
+          {/* PRIMARY PREDICTION */}
+          <div className="result-primary-row">
+            <div
+              className="result-pred-block"
+              style={{ borderColor: mod.colorMid }}
+            >
+              <p className="rpb-eye">DETECTED CONDITION</p>
+
+              <p
+                className="rpb-val"
+                style={{ color: mod.color }}
+              >
+                {result?.prediction}
+              </p>
+
+              <p className="rpb-sub">
+                Conf: {Number(result?.confidence ?? 0).toFixed(2)}%
+              </p>
             </div>
 
-            {/* Secondary data rows */}
-            <div className="data-rows-block">
-              <DataRow label="RECOMMENDATION" value={result.recommendation} />
-              <DataRow label="WARNING"         value={result.warning}        color="#f97316" />
-            </div>
+            <ConfidenceRing
+              value={Number(result?.confidence ?? 0)}
+              color={mod.color}
+            />
+          </div>
 
-            {/* Grad-CAM — explainability visualization toggle */}
-            {result.gradcam && (
-              <div className="gradcam-block">
-                <button className="ghost-btn" style={{ "--gc": mod.color }}
-                  onClick={() => setShowGradcam(v => !v)}>
-                  {showGradcam ? <EyeOff size={14} /> : <Eye size={14} />}
-                  {showGradcam ? "HIDE" : "SHOW"} GRAD-CAM HEATMAP
-                </button>
-                {showGradcam && (
-                  <div className="gradcam-img-wrap fade-in">
-                    <p className="gradcam-caption">
-                      <ScanEye size={12} /> Gradient-weighted Class Activation Map
-                    </p>
-                    <img src={`data:image/jpeg;base64,${result.gradcam}`} alt="Grad-CAM" />
-                  </div>
-                )}
+            {/* CLASS PROBABILITY DISTRIBUTION */}
+            {result.probabilities && (
+              <div className="prob-section">
+                <p className="prob-title">
+                  <BarChart2 size={13} />
+                  CLASS PROBABILITY DISTRIBUTION
+                </p>
+
+                {Object.entries(result.probabilities).map(([label, value]) => (
+                  <ProbBar
+                    key={label}
+                    label={label}
+                    value={Number(value).toFixed(2)}
+                    color={mod.color}
+                  />
+                ))}
               </div>
             )}
+
+            {/* SECONDARY DATA */}
+            <div className="data-rows-block">
+              <DataRow
+                label="RECOMMENDATION"
+                value={result.recommendation}
+              />
+
+              <DataRow
+                label="WARNING"
+                value={result.warning}
+                color="#f97316"
+              />
+            </div>
+
+            {/* Hull class probability distribution */}
+            {result.probabilities && (
+              <div className="prob-section">
+                <p className="prob-title">
+                  <BarChart2 size={13} /> CLASS PROBABILITY DISTRIBUTION
+                </p>
+
+                {Object.entries(result.probabilities).map(([label, probability]) => {
+                  const value = Number(probability);
+
+                  return (
+                    <ProbBar
+                      key={label}
+                      label={label}
+                      value={value}
+                      color={mod.color}
+                    />
+                  );
+                })}
+              </div>
+            )}
+
+            {/* GRAD-CAM */}
+            {result.gradcam && (
+              <div className="gradcam-block">
+
+                <button
+                  className="ghost-btn"
+                  style={{ "--gc": mod.color }}
+                  onClick={() => setShowGradcam(v => !v)}
+                >
+                  {showGradcam ? (
+                    <EyeOff size={14} />
+                  ) : (
+                    <Eye size={14} />
+                  )}
+
+                  {showGradcam
+                    ? "HIDE GRAD-CAM"
+                    : "VIEW GRAD-CAM"}
+                </button>
+
+                {showGradcam && (
+                  <div className="gradcam-img-wrap fade-in">
+
+                    <p className="gradcam-caption">
+                      <ScanEye size={12} />
+                      Gradient-weighted Class Activation Map
+                    </p>
+
+                    <img
+                      src={`data:image/jpeg;base64,${result.gradcam}`}
+                      alt="Grad-CAM"
+                    />
+
+                  </div>
+                )}
+
+              </div>
+            )}
+
           </div>
         )}
 
@@ -487,7 +891,28 @@ export default function App() {
               <ConfidenceRing value={parseFloat(result.confidence)} color={mod.color} />
             </div>
 
-            {/* Probability distribution bars */}
+            <div className="sea-meta-grid">
+              <DataRow label="PROCESSING TIME" value={`${result.processing_time ?? "N/A"} sec`} />
+              <DataRow label="ENHANCEMENT" value={result.enhancement_applied ? "Applied" : "Not applied"} />
+              <DataRow label="VALIDATION" value={result.validation?.message || "N/A"} />
+            </div>
+
+            {result.risk_indicator && (
+              <div className={`sea-risk-card risk-${String(result.risk_indicator.level || "unknown").toLowerCase().replaceAll(" ", "-")}`}>
+                <div className="sea-risk-topline">
+                  <span>OPERATIONAL RISK</span>
+                  <strong>{result.risk_indicator.level}</strong>
+                </div>
+                <div className="sea-risk-track">
+                  <div className="sea-risk-fill" style={{ width: `${result.risk_indicator.score || 0}%` }} />
+                </div>
+                <div className="sea-risk-score">{result.risk_indicator.score}/100</div>
+                {result.risk_indicator.reasons?.length > 0 && (
+                  <p className="sea-support-text">Factors: {result.risk_indicator.reasons.join(", ")}</p>
+                )}
+              </div>
+            )}
+
             {result.probabilities && (
               <div className="prob-section">
                 <p className="prob-title"><BarChart2 size={13} /> CLASS PROBABILITY DISTRIBUTION</p>
@@ -496,6 +921,88 @@ export default function App() {
                 ))}
               </div>
             )}
+
+            {result.image_quality && (
+              <div className="sea-feature-card">
+                <p className="sea-feature-title">IMAGE QUALITY ANALYSIS</p>
+                <div className="sea-kv-grid">
+                  <DataRow label="BRIGHTNESS" value={`${result.image_quality.brightness_status} (${result.image_quality.brightness_value})`} />
+                  <DataRow label="CONTRAST" value={`${result.image_quality.contrast_status} (${result.image_quality.contrast_value})`} />
+                  <DataRow label="SHARPNESS" value={`${result.image_quality.sharpness_status} (${result.image_quality.sharpness_value})`} />
+                  <DataRow label="VISIBILITY" value={result.image_quality.visibility_status} />
+                </div>
+              </div>
+            )}
+
+            {result.recommendation && (
+              <div className="sea-feature-card">
+                <p className="sea-feature-title">DECISION SUPPORT RECOMMENDATION</p>
+                <div className="sea-recommendation-row">
+                  <span className="sea-level-badge">{result.recommendation.risk_level}</span>
+                  <p>{result.recommendation.message}</p>
+                </div>
+              </div>
+            )}
+
+            {result.weather_suitability && (
+              <div className="sea-feature-card">
+                <p className="sea-feature-title">MARINE OPERATION SUITABILITY</p>
+                <div className="sea-suitability-head">
+                  <strong>{result.weather_suitability.condition}</strong>
+                  <span>{result.weather_suitability.score}/100</span>
+                </div>
+                <div className="sea-risk-track">
+                  <div className="sea-suitability-fill" style={{ width: `${result.weather_suitability.score}%` }} />
+                </div>
+                <div className="sea-operation-badges">
+                  {result.weather_suitability.operations?.map((operation) => (
+                    <span key={operation}>{operation}</span>
+                  ))}
+                </div>
+                <p className="sea-support-text">{result.weather_suitability.reason}</p>
+              </div>
+            )}
+
+            {result.warnings?.length > 0 && (
+              <div className="sea-feature-card sea-warning-card">
+                <p className="sea-feature-title">SYSTEM WARNINGS</p>
+                {result.warnings.map((warning, index) => (
+                  <p className="sea-warning-line" key={`${warning}-${index}`}>
+                    <AlertTriangle size={13} /> {warning}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            <button className="sea-pdf-btn" onClick={generateSeaStatePDF}>
+              DOWNLOAD SEA-STATE PDF REPORT
+            </button>
+
+            <div className="sea-history-section">
+              <div className="sea-history-header">
+                <p className="sea-feature-title">SEA-STATE PREDICTION HISTORY</p>
+                <div className="sea-history-actions">
+                  <button onClick={fetchSeaHistory} disabled={seaHistoryLoading}>
+                    {seaHistoryLoading ? "LOADING…" : "REFRESH"}
+                  </button>
+                  <button className="danger" onClick={clearSeaHistory} disabled={!canWrite} title={!canWrite ? "Read-only access cannot clear history" : "Clear history"}>CLEAR</button>
+                </div>
+              </div>
+              {seaHistory.length === 0 ? (
+                <p className="sea-history-empty">No sea-state prediction history available.</p>
+              ) : (
+                <div className="sea-history-grid">
+                  {seaHistory.slice(0, 6).map((item, index) => (
+                    <div className="sea-history-card" key={`${item.timestamp}-${item.filename}-${index}`}>
+                      <span>{item.timestamp}</span>
+                      <strong>{item.predicted_sea_state}</strong>
+                      <p>{item.filename}</p>
+                      <p>{item.confidence}% confidence · {item.recommendation?.risk_level || "Unknown"} risk</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -506,6 +1013,20 @@ export default function App() {
           <div className="result-body">
             {result.results && result.results.length > 0 ? (
               <>
+                <div className="boat-analysis-summary" style={{ borderColor: mod.colorMid }}>
+                  <div>
+                    <span>LOCAL SHIPS</span>
+                    <strong>{result.results.filter((item) => item.detection_type === "ship" && item.label === "Local Ship").length}</strong>
+                  </div>
+                  <div>
+                    <span>FOREIGN SHIPS</span>
+                    <strong>{result.results.filter((item) => item.detection_type === "ship" && item.label === "Foreign Ship").length}</strong>
+                  </div>
+                  <div>
+                    <span>FLAG EVIDENCE</span>
+                    <strong>{result.results.filter((item) => item.detection_type === "flag").length}</strong>
+                  </div>
+                </div>
                 <div className="result-primary-row">
                   <div className="result-pred-block" style={{ borderColor: mod.colorMid }}>
                     <p className="rpb-eye">VESSELS DETECTED</p>
@@ -531,6 +1052,15 @@ export default function App() {
                     </div>
                   ))}
                 </div>
+              
+                <div className="boat-result-details" style={{ borderColor: mod.colorMid }}>
+                  <DataRow label="ESTIMATED SIZE" value={result.estimated_size || "Medium Vessel"} color={mod.color} />
+                  <DataRow label="STATUS" value={result.status || "Detected"} color="#00ffb3" />
+                </div>
+
+                <button className="boat-download-btn" onClick={downloadBoatAnalysis}>
+                  <Download size={14} /> DOWNLOAD ANNOTATED IMAGE
+                </button>
               </>
             ) : (
               <div className="empty-result">
@@ -574,10 +1104,11 @@ export default function App() {
             </div>
           </div>
         )}
+        </div>
+        );
+        };
 
-      </div>
-    );
-  };
+  
 
   /* ════════════════════════════════════════════════════════
      FULL APPLICATION RENDER
@@ -585,6 +1116,10 @@ export default function App() {
      ════════════════════════════════════════════════════════ */
   return (
     <div className="app-shell">
+
+      {showAccessAdmin && isAdmin && (
+        <AdminUsers onClose={() => setShowAccessAdmin(false)} />
+      )}
 
       {/* Full-viewport animated radar canvas background */}
       <RadarCanvas />
@@ -697,6 +1232,17 @@ export default function App() {
           <div className="cb-badges">
             <div className="badge-live"><span className="live-dot" />LIVE</div>
             <div className="badge-secure"><Shield size={12} />SECURE</div>
+            <div className={`badge-access ${canWrite ? "badge-access--write" : "badge-access--read"}`}>
+              <LockKeyhole size={12} />
+              {isAdmin ? "ADMIN" : accessLevel === "read_write" ? "READ / WRITE" : "READ ONLY"}
+            </div>
+            {isAdmin && (
+              <button className="admin-access-btn" onClick={() => setShowAccessAdmin(true)}>
+                <UserRoundCog size={13} /> ACCESS ADMIN
+              </button>
+            )}
+            <span className="cb-user">{user?.username}</span>
+            <LogoutButton />
           </div>
         </header>
 
@@ -706,8 +1252,20 @@ export default function App() {
           <p>{mod.description}</p>
         </div>
 
+        {!canWrite && (
+          <div className="readonly-banner">
+            <LockKeyhole size={14} />
+            <div>
+              <strong>READ-ONLY ACCESS</strong>
+              <span>You can review available data and history, but analysis uploads, deletes and simulation controls are blocked by the backend.</span>
+            </div>
+          </div>
+        )}
+
         {activeModule === "simulation" ? (
-          <LiveSimulation />
+          <div className={!canWrite ? "simulation-readonly" : ""}>
+            <LiveSimulation />
+          </div>
         ) : (
           <>
         {/* ── 3-panel analysis grid ── */}
@@ -722,13 +1280,13 @@ export default function App() {
 
             {/* Drag-and-drop zone */}
             <label
-              className={`drop-zone ${dragOver ? "dz--over" : ""} ${file ? "dz--filled" : ""}`}
+              className={`drop-zone ${dragOver ? "dz--over" : ""} ${file ? "dz--filled" : ""} ${!canWrite ? "dz--readonly" : ""}`}
               style={dragOver ? { borderColor: mod.color } : {}}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
             >
-              <input type="file" accept="image/*" onChange={handleFileChange} />
+              <input type="file" accept="image/*" onChange={handleFileChange} disabled={!canWrite} />
 
               {file ? (
                 <div className="dz-loaded">
@@ -748,11 +1306,23 @@ export default function App() {
               )}
             </label>
 
+            {activeModule === "sea" && (
+              <label className="sea-enhancement-toggle">
+                <input
+                  type="checkbox"
+                  checked={applyEnhancement}
+                  onChange={(e) => setApplyEnhancement(e.target.checked)}
+                  disabled={!canWrite}
+                />
+                <span>Apply image enhancement before prediction</span>
+              </label>
+            )}
+
             <button
               className="run-btn"
               style={{ "--mc": mod.color, "--mc-dim": mod.colorDim }}
               onClick={runPrediction}
-              disabled={!file || loading}
+              disabled={!file || loading || !canWrite}
             >
               {loading
                 ? <><Loader size={15} className="spin" /> ANALYZING…</>
@@ -775,6 +1345,9 @@ export default function App() {
               {preview ? (
                 <div className="preview-img-wrap">
                   <img src={preview} alt="Preview" className="preview-img" />
+                  {activeModule === "boat" && !loading && (
+                    <BoatDetectionOverlay result={result} color={mod.color} />
+                  )}
                   {/* Scan-line overlay shown while model is running */}
                   {loading && (
                     <div className="scan-overlay">
@@ -847,4 +1420,16 @@ export default function App() {
       </main>
     </div>
   );
+
 }
+
+
+function App() {
+  return (
+    <ProtectedRoute>
+      <AppContent />
+    </ProtectedRoute>
+  );
+}
+
+export default App;

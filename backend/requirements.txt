@@ -14,3 +14,6 @@ matplotlib
 requests
 pytest
 httpx
+python-dotenv
+pymongo
+pwdlib[argon2]
