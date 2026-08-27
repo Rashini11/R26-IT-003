@@ -25,6 +25,8 @@ ml/dataset_v2_balanced/
 data/
 dataset.csv
 
+test_images/
+
 # YOLO training output folders - do not push
 runs/
 
