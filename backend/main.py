@@ -1300,9 +1300,14 @@ def clear_sea_state_history():
 
 
 # =====================================================
-# BOAT DETECTION MODEL - YOLOv8
+# VESSEL DETECTION MODEL - YOLO
+# Class order for the retrained model: boat, ship, sl_flag.
 # =====================================================
 boat_model = None
+
+VESSEL_CLASS_BOAT = 0
+VESSEL_CLASS_SHIP = 1
+VESSEL_CLASS_SL_FLAG = 2
 
 
 def infer_vessel_origin(detections):
@@ -1316,6 +1321,10 @@ def infer_vessel_origin(detections):
         return "Local Ship"
     if "foreign ship" in label:
         return "Foreign Ship"
+    if "local boat" in label:
+        return "Local Boat"
+    if "foreign boat" in label:
+        return "Foreign Boat"
     return "Unknown"
 
 
@@ -1459,6 +1468,8 @@ async def predict_boat_detection(
 
         results = boat_model(
             tmp_path,
+            conf=0.50,
+            iou=0.45,
             save=False,
             verbose=False,
         )
@@ -1497,6 +1508,9 @@ async def predict_boat_detection(
                             else 0
                         )
 
+                        if conf < 0.50:
+                            continue
+
                         label = (
                             boat_model.names.get(
                                 cls_id,
@@ -1526,16 +1540,16 @@ async def predict_boat_detection(
         flag_boxes = [
             detection["box"]
             for detection in detections
-            if detection["class_id"] == 1
+            if detection["class_id"] == VESSEL_CLASS_SL_FLAG
         ]
         image_size = None
         if results and len(results) > 0 and results[0].orig_shape:
             image_height, image_width = results[0].orig_shape[:2]
             image_size = [int(image_width), int(image_height)]
-        ship_detections = []
+        vessel_detections = []
         flag_detections = []
         for detection in detections:
-            if detection["class_id"] == 1:
+            if detection["class_id"] == VESSEL_CLASS_SL_FLAG:
                 flag_detections.append({
                     "label": "SL Flag",
                     "confidence": detection["confidence"],
@@ -1543,35 +1557,50 @@ async def predict_boat_detection(
                     "detection_type": "flag",
                 })
                 continue
-            if detection["class_id"] != 0:
+            if detection["class_id"] not in (VESSEL_CLASS_BOAT, VESSEL_CLASS_SHIP):
                 continue
 
             is_local = any(
                 ship_has_local_flag(detection["box"], flag_box)
                 for flag_box in flag_boxes
             )
-            ship_detections.append({
-                "label": "Local Ship" if is_local else "Foreign Ship",
+            vessel_type = (
+                "Boat"
+                if detection["class_id"] == VESSEL_CLASS_BOAT
+                else "Ship"
+            )
+            vessel_detections.append({
+                "label": f"{'Local' if is_local else 'Foreign'} {vessel_type}",
                 "confidence": detection["confidence"],
                 "sl_flag_detected": is_local,
                 "box": detection["box"],
-                "detection_type": "ship",
+                "detection_type": vessel_type.lower(),
             })
 
-        all_detections = ship_detections + flag_detections
+        vessel_detections = sorted(
+            vessel_detections,
+            key=lambda detection: detection["confidence"],
+            reverse=True,
+        )[:1]
+        flag_detections = sorted(
+            flag_detections,
+            key=lambda detection: detection["confidence"],
+            reverse=True,
+        )[:1]
+        all_detections = vessel_detections + flag_detections
 
-        confidence_value = round(max((d["confidence"] for d in ship_detections), default=0), 1)
+        confidence_value = round(max((d["confidence"] for d in vessel_detections), default=0), 1)
 
         return {
             "image": file.filename,
-            "status": "Detected" if all_detections else "No Boat Detected",
+            "status": "Detected" if all_detections else "No Vessel Detected",
             "confidence": confidence_value,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "source": "Drone",
-            "estimated_size": infer_estimated_size(ship_detections),
-            "vessel_origin": infer_vessel_origin(ship_detections),
+            "estimated_size": infer_estimated_size(vessel_detections),
+            "vessel_origin": infer_vessel_origin(vessel_detections),
             "results": all_detections,
-            "count": len(ship_detections),
+            "count": len(vessel_detections),
             "image_size": image_size,
             "demo": False,
         }
