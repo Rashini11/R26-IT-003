@@ -43,10 +43,14 @@ import {
   LockKeyhole,
 } from "lucide-react";
 import LiveSimulation from "./LiveSimulation";
+import { RadarDatabaseHistory } from "./DatabaseHistory";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LogoutButton from "./components/LogoutButton";
 import AdminUsers from "./components/AdminUsers";
+import MediaFitToggle from "./components/MediaFitToggle";
+import ThemeToggle from "./components/ThemeToggle";
 import { useAuth } from "./context/AuthContext";
+import { useTheme } from "./context/ThemeContext";
 import "./App.css";
 
 /* ══════════════════════════════════════════════════════════
@@ -68,6 +72,7 @@ const MODULES = {
     description: "CNN-based detection of corrosion, cracks, and biofouling, and paint damage with Grad-CAM explainability.",
     icon: Anchor,
     color: "#00d4ff",
+    lightColor: "#007fa5",
     colorDim: "#00d4ff22",
     colorMid: "#00d4ff55",
     tag: "CNN · Grad-CAM",
@@ -81,6 +86,7 @@ const MODULES = {
     description: "Multi-class deep learning model classifying sea surface conditions from imagery.",
     icon: Waves,
     color: "#00ffb3",
+    lightColor: "#008f6a",
     colorDim: "#00ffb322",
     colorMid: "#00ffb355",
     tag: "Multi-class CNN",
@@ -94,6 +100,7 @@ const MODULES = {
     description: "YOLO-based real-time object detection for maritime vessel identification.",
     icon: Ship,
     color: "#a78bfa",
+    lightColor: "#6d4cc7",
     colorDim: "#a78bfa22",
     colorMid: "#a78bfa55",
     tag: "YOLO · Object Detection",
@@ -107,6 +114,7 @@ const MODULES = {
     description: "Fused YOLO + CNN pipeline classifying radar signatures as bird, ship, or unknown.",
     icon: RadioTower,
     color: "#f97316",
+    lightColor: "#b9530b",
     colorDim: "#f9731622",
     colorMid: "#f9731655",
     tag: "YOLO + CNN Fusion",
@@ -119,6 +127,7 @@ const MODULES = {
     description: "Streams SAR images, replays two AIS trajectories, forecasts motion with the selected GRU and assesses DCPA/TCPA collision risk.",
     icon: Navigation,
     color: "#00d4ff",
+    lightColor: "#007fa5",
     colorDim: "#00d4ff22",
     colorMid: "#00d4ff55",
     tag: "SAR · AIS · GRU · CPA",
@@ -325,7 +334,7 @@ function ProbBar({ label, value, color }) {
   );
 }
 
-function BoatDetectionOverlay({ result, color }) {
+function BoatDetectionOverlay({ result, color, mediaFit = "fit" }) {
   const [imageWidth, imageHeight] = result?.image_size || [];
   const detections = result?.results?.filter((detection) => (
     Array.isArray(detection.box) && detection.box.length === 4
@@ -337,7 +346,7 @@ function BoatDetectionOverlay({ result, color }) {
     <svg
       className="boat-detection-overlay"
       viewBox={`0 0 ${imageWidth} ${imageHeight}`}
-      preserveAspectRatio="xMidYMid meet"
+      preserveAspectRatio={mediaFit === "fill" ? "xMidYMid slice" : "xMidYMid meet"}
       aria-label="Boat detection labels"
     >
       {detections.map((detection, index) => {
@@ -391,6 +400,7 @@ function BoatDetectionOverlay({ result, color }) {
    ══════════════════════════════════════════════════════════ */
 function AppContent() {
   const { user, canWrite, isAdmin, accessLevel } = useAuth();
+  const { theme } = useTheme();
 
   /* ── Application state ── */
   const [activeModule, setActiveModule] = useState("hull");
@@ -405,8 +415,32 @@ function AppContent() {
   const [seaHistory, setSeaHistory] = useState([]);
   const [seaHistoryLoading, setSeaHistoryLoading] = useState(false);
   const [showAccessAdmin, setShowAccessAdmin] = useState(false);
+  const [mediaFit, setMediaFit] = useState(() => {
+    const saved = window.localStorage.getItem("oceaniq-media-fit");
+    return saved === "fill" ? "fill" : "fit";
+  });
+const fileInputRef = useRef(null);
+  const resultsCardRef = useRef(null);
 
-  const mod = MODULES[activeModule];
+  useEffect(() => {
+    window.localStorage.setItem("oceaniq-media-fit", mediaFit);
+  }, [mediaFit]);
+useEffect(() => {
+    if (!result || loading || window.innerWidth > 1180) return;
+    const timer = window.setTimeout(() => {
+      resultsCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [result, loading]);
+
+  const baseMod = MODULES[activeModule];
+  const modColor = theme === "light" ? (baseMod.lightColor || baseMod.color) : baseMod.color;
+  const mod = {
+    ...baseMod,
+    color: modColor,
+    colorDim: `${modColor}18`,
+    colorMid: `${modColor}48`,
+  };
   const ModIcon = mod.icon;
 
   /* ── Sea-state history helpers ── */
@@ -978,9 +1012,13 @@ function AppContent() {
               DOWNLOAD SEA-STATE PDF REPORT
             </button>
 
-            <div className="sea-history-section">
-              <div className="sea-history-header">
-                <p className="sea-feature-title">SEA-STATE PREDICTION HISTORY</p>
+            <details className="sea-history-section sea-history-details">
+              <summary>
+                <span className="sea-feature-title">SEA-STATE PREDICTION HISTORY</span>
+                <span className="sea-history-count">{seaHistory.length} RECORDS · OPEN</span>
+              </summary>
+              <div className="sea-history-header sea-history-header--controls">
+                <p className="sea-support-text">Recent operational classifications are kept here so the live result remains the primary focus.</p>
                 <div className="sea-history-actions">
                   <button onClick={fetchSeaHistory} disabled={seaHistoryLoading}>
                     {seaHistoryLoading ? "LOADING…" : "REFRESH"}
@@ -1002,7 +1040,7 @@ function AppContent() {
                   ))}
                 </div>
               )}
-            </div>
+            </details>
           </div>
         )}
 
@@ -1077,31 +1115,131 @@ function AppContent() {
         {activeModule === "radar" && (
           <div className="result-body">
 
-            {/* Final fused prediction — the most prominent element */}
-            <div className="radar-final-card"
-              style={{ borderColor: mod.colorMid, background: mod.colorDim }}>
-              <p className="rfc-eye">FINAL FUSED DECISION</p>
-              <p className="rfc-val" style={{ color: mod.color }}>{result.final_prediction}</p>
-              <p className="rfc-status">{result.decision_status}</p>
+            <div
+              className="radar-final-card"
+              style={{
+                borderColor: mod.colorMid,
+                background: mod.colorDim,
+              }}
+            >
+              <p className="rfc-eye">
+                FINAL RADAR DECISION
+              </p>
+
+              <p
+                className="rfc-val"
+                style={{ color: mod.color }}
+              >
+                {result.final_prediction}
+              </p>
+
+              <p className="rfc-status">
+                {result.decision_status}
+              </p>
+
+              <p className="rfc-status">
+                Model confidence:{" "}
+                {Number(
+                  result.confidence ?? 0
+                ).toFixed(2)}
+                %
+              </p>
+
+              <p className="rfc-status">
+                Validation accuracy:{" "}
+                {Number(
+                  result.validation_accuracy ?? 0
+                ).toFixed(2)}
+                %
+              </p>
+
+              <p className="rfc-status">
+                Held-out test accuracy:{" "}
+                {Number(
+                  result.model_accuracy ?? 0
+                ).toFixed(2)}
+                %
+              </p>
+
+              <p className="rfc-status">
+                Macro F1:{" "}
+                {Number(
+                  result.macro_f1 ?? 0
+                ).toFixed(4)}
+              </p>
             </div>
 
-            {/* YOLO vs CNN model breakdown side by side */}
             <div className="radar-model-row">
-              <div className="radar-model-card" style={{ borderColor: "#00d4ff44" }}>
-                <p className="rmc-label" style={{ color: "#00d4ff" }}>
-                  <Zap size={11} /> YOLO MODEL
+
+              <div
+                className="radar-model-card"
+                style={{
+                  borderColor: "#00d4ff44",
+                }}
+              >
+                <p
+                  className="rmc-label"
+                  style={{
+                    color: "#00d4ff",
+                  }}
+                >
+                  BIRD PROBABILITY
                 </p>
-                <p className="rmc-pred">{result.yolo_prediction}</p>
-                <p className="rmc-conf" style={{ color: "#00d4ff" }}>{result.yolo_confidence}%</p>
-              </div>
-              <div className="radar-model-card" style={{ borderColor: "#00ffb344" }}>
-                <p className="rmc-label" style={{ color: "#00ffb3" }}>
-                  <Network size={11} /> CNN VERIFY
+
+                <p className="rmc-pred">
+                  BIRD
                 </p>
-                <p className="rmc-pred">{result.cnn_prediction}</p>
-                <p className="rmc-conf" style={{ color: "#00ffb3" }}>{result.cnn_confidence}%</p>
+
+                <p
+                  className="rmc-conf"
+                  style={{
+                    color: "#00d4ff",
+                  }}
+                >
+                  {Number(
+                    result.bird_probability
+                    ?? 0
+                  ).toFixed(2)}
+                  %
+                </p>
               </div>
+
+              <div
+                className="radar-model-card"
+                style={{
+                  borderColor: "#00ffb344",
+                }}
+              >
+                <p
+                  className="rmc-label"
+                  style={{
+                    color: "#00ffb3",
+                  }}
+                >
+                  SHIP PROBABILITY
+                </p>
+
+                <p className="rmc-pred">
+                  SHIP
+                </p>
+
+                <p
+                  className="rmc-conf"
+                  style={{
+                    color: "#00ffb3",
+                  }}
+                >
+                  {Number(
+                    result.ship_probability
+                    ?? 0
+                  ).toFixed(2)}
+                  %
+                </p>
+              </div>
+
             </div>
+            <RadarDatabaseHistory />
+
           </div>
         )}
         </div>
@@ -1158,34 +1296,36 @@ function AppContent() {
           {Object.values(MODULES).map((m) => {
             const Icon = m.icon;
             const active = activeModule === m.id;
+            const itemColor = theme === "light" ? (m.lightColor || m.color) : m.color;
+            const itemColorDim = `${itemColor}18`;
             return (
               <button key={m.id}
                 className={`mnb ${active ? "mnb--active" : ""}`}
-                style={active ? { "--mc": m.color, "--mc-dim": m.colorDim } : {}}
+                style={active ? { "--mc": itemColor, "--mc-dim": itemColorDim } : {}}
                 onClick={() => switchModule(m.id)}
               >
-                {active && <span className="mnb-accent" style={{ background: m.color }} />}
+                {active && <span className="mnb-accent" style={{ background: itemColor }} />}
 
                 <div className="mnb-icon"
                   style={{
-                    color: active ? m.color : "rgba(255,255,255,0.3)",
-                    background: active ? m.colorDim : "transparent",
+                    color: active ? itemColor : "var(--text-300)",
+                    background: active ? itemColorDim : "transparent",
                   }}>
                   <Icon size={16} strokeWidth={1.8} />
                 </div>
 
                 <div className="mnb-text">
                   <span className="mnb-name"
-                    style={{ color: active ? "#fff" : "rgba(255,255,255,0.5)" }}>
+                    style={{ color: active ? "var(--text-100)" : "var(--text-200)" }}>
                     {m.label}
                   </span>
                   <span className="mnb-tag"
-                    style={{ color: active ? m.color : "rgba(255,255,255,0.2)" }}>
+                    style={{ color: active ? itemColor : "var(--text-400)" }}>
                     {m.tag}
                   </span>
                 </div>
 
-                {active && <ChevronRight size={13} style={{ color: m.color, marginLeft: "auto", flexShrink: 0 }} />}
+                {active && <ChevronRight size={13} style={{ color: itemColor, marginLeft: "auto", flexShrink: 0 }} />}
               </button>
             );
           })}
@@ -1230,6 +1370,7 @@ function AppContent() {
           </div>
 
           <div className="cb-badges">
+            <ThemeToggle compact />
             <div className="badge-live"><span className="live-dot" />LIVE</div>
             <div className="badge-secure"><Shield size={12} />SECURE</div>
             <div className={`badge-access ${canWrite ? "badge-access--write" : "badge-access--read"}`}>
@@ -1264,7 +1405,7 @@ function AppContent() {
 
         {activeModule === "simulation" ? (
           <div className={!canWrite ? "simulation-readonly" : ""}>
-            <LiveSimulation />
+            <LiveSimulation mediaFit={mediaFit} onMediaFitChange={setMediaFit} />
           </div>
         ) : (
           <>
@@ -1286,7 +1427,7 @@ function AppContent() {
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
             >
-              <input type="file" accept="image/*" onChange={handleFileChange} disabled={!canWrite} />
+              <input ref={fileInputRef} type="file" accept="image/*" onClick={(e) => { e.currentTarget.value = ""; }} onChange={handleFileChange} disabled={!canWrite} />
 
               {file ? (
                 <div className="dz-loaded">
@@ -1341,12 +1482,25 @@ function AppContent() {
               )}
             </div>
 
+            <div className="preview-toolbar">
+              <MediaFitToggle mode={mediaFit} onChange={setMediaFit} />
+              {file && canWrite && (
+                <button
+                  type="button"
+                  className="change-image-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload size={12} /> CHANGE IMAGE
+                </button>
+              )}
+            </div>
+
             <div className="preview-area">
               {preview ? (
                 <div className="preview-img-wrap">
-                  <img src={preview} alt="Preview" className="preview-img" />
+                  <img src={preview} alt="Preview" className={`preview-img preview-img--${mediaFit}`} />
                   {activeModule === "boat" && !loading && (
-                    <BoatDetectionOverlay result={result} color={mod.color} />
+                    <BoatDetectionOverlay result={result} color={mod.color} mediaFit={mediaFit} />
                   )}
                   {/* Scan-line overlay shown while model is running */}
                   {loading && (
@@ -1374,7 +1528,7 @@ function AppContent() {
           </section>
 
           {/* ─── PANEL 3: Results ─── */}
-          <section className="a-card results-card">
+          <section ref={resultsCardRef} className="a-card results-card">
             <div className="a-card-header">
               <span className="a-card-label"><Activity size={11} /> INTELLIGENCE REPORT</span>
               <span className="a-card-tag" style={{ color: mod.color }}>
@@ -1410,6 +1564,23 @@ function AppContent() {
           </section>
         </div>
           </>
+        )}
+
+        {activeModule !== "simulation" && file && canWrite && (
+          <div className="mobile-action-dock">
+            <button type="button" className="mobile-change-btn" onClick={() => fileInputRef.current?.click()}>
+              <Upload size={14} /> CHANGE
+            </button>
+            <button
+              type="button"
+              className="mobile-run-btn"
+              style={{ "--mc": mod.color }}
+              onClick={runPrediction}
+              disabled={loading}
+            >
+              {loading ? <><Loader size={14} className="spin" /> ANALYZING…</> : <><Zap size={14} /> {result ? "RE-RUN" : "RUN ANALYSIS"}</>}
+            </button>
+          </div>
         )}
 
         {/* Footer strip */}

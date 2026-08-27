@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SAR_ROOT = (PROJECT_ROOT / "ml" / "dataset_v2_balanced" / "test").resolve()
+SAR_ROOT = (PROJECT_ROOT / "ml" / "live_simulation_radar").resolve()
 AIS_CSV_PATH = PROJECT_ROOT / "ml" / "external_datasets" / "ais_motion" / "processed_AIS_dataset.csv"
-MOTION_MODEL_PATH = PROJECT_ROOT / "ml" / "models" / "final" / "ais_motion_gru_best.pth"
+MOTION_MODEL_PATH = PROJECT_ROOT / "ml" / "models" / "final" / "ais_motion_gru_under90_deploy.pth"
 MOTION_METADATA_PATH = PROJECT_ROOT / "ml" / "ais_motion" / "sequences_5min" / "metadata.json"
 MOTION_TEST_NPZ_PATH = PROJECT_ROOT / "ml" / "ais_motion" / "sequences_5min" / "test_motion_sequences.npz"
-CLASSIFICATION_ENDPOINT = os.getenv(
-    "RADAR_CLASSIFICATION_ENDPOINT",
-    "http://127.0.0.1:8000/predict-radar-object",
-)
 
 ALLOWED_FRONTEND_ORIGINS = [
     "http://localhost:5173",

@@ -1,74 +1,249 @@
-# Python environment
-venv/
-backend/.venv/
-.env
+# ============================================================
+# R26-IT-003 / OceanIQ
+# Git Ignore Rules
+# ============================================================
 
-# Python cache
-__pycache__/
-*.pyc
-.ipynb_checkpoints/
-*.ipynb_checkpoints
 
-# macOS
+# ============================================================
+# OPERATING SYSTEM
+# ============================================================
+
 .DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
 
-# VS Code
+
+# ============================================================
+# IDE / EDITOR
+# ============================================================
+
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
 
-# Backend temp/uploads
-backend/temp/
-backend/uploads/
 
-# Large datasets - do not push
-ml/dataset/
-ml/dataset_v2/
-ml/dataset_v2_balanced/
-data/
-dataset.csv
+# ============================================================
+# PYTHON
+# ============================================================
 
-# YOLO training output folders - do not push
-runs/
-
-# Dataset caches
-*.cache
-.env
-
-# Downloaded pretrained/base weights
-yolo11n-cls.pt
-yolo11s-cls.pt
-yolo11m-cls.pt
-yolov8n.pt
-best.pt
-
-# Old/extra local checkpoints
-ml/models/*.pth
-!ml/models/final/
-!ml/models/final/*.pth
-!ml/models/final/*.pt
-ml/notebooks/
-
-# R26-IT-003 local research datasets / generated data
-ml/external_datasets/
-ml/ais_motion/
-ml/models/ais_motion/
-ml/synthetic_radar/
-
-# Runtime generated files
-backend/temp/
-backend/uploads/
-
-# Local backups and archives
-backend.before-simulation/
-frontend.before-simulation/
-backup-before-single-backend/
-*.zip
-
-# Python / macOS
 __pycache__/
-*.pyc
-.DS_Store
+*.py[cod]
+*$py.class
 
-# Node dependencies - never commit
-backend/node_modules/
-frontend/node_modules/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+.python-version
+
+venv/
+.venv/
+env/
+ENV/
+
+
+# ============================================================
+# ENVIRONMENT / SECRETS
+# ============================================================
+
+.env
+.env.*
 backend/.env
+
+# Allow safe example environment files
+!.env.example
+!backend/.env.example
+
+*.key
+*.pem
+
+
+# ============================================================
+# NODE / REACT / VITE
+# ============================================================
+
+node_modules/
+frontend/node_modules/
+
+dist/
+frontend/dist/
+
+.vite/
+frontend/.vite/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+
+# ============================================================
+# LOCAL DEVELOPMENT BACKUPS
+# ============================================================
+
+*.before-*
+*.after-*-backup
+*.backup
+*.bak
+*.orig
+*.tmp
+
+# Examples ignored by the rules above:
+# backend/main.py.before-radar88
+# backend/main.py.before-final-model-integration
+# backend/main.py.after-vessel-merge-backup
+# frontend/src/App.jsx.before-radar-v4-deploy
+
+
+# ============================================================
+# MACHINE LEARNING DATASETS
+# Large/generated datasets must stay outside Git history.
+# ============================================================
+
+ml/dataset/
+ml/dataset_v*/
+ml/external_datasets/
+
+# Live Simulation image dataset
+ml/live_simulation_radar/
+
+
+# ============================================================
+# GENERATED AIS SEQUENCE DATA
+# Keep source/preparation scripts in Git, not huge NPZ arrays.
+# ============================================================
+
+ml/ais_motion/sequences_5min/*.npz
+
+# metadata.json may be required by the deployed GRU.
+!ml/ais_motion/sequences_5min/metadata.json
+
+
+# ============================================================
+# GENERATED ML EVALUATION OUTPUTS
+# Confusion matrices, JSON metrics, CSV predictions, etc.
+# can be recreated from committed evaluation scripts.
+# ============================================================
+
+ml/evaluation/
+
+
+# ============================================================
+# OLD / INTERMEDIATE MODEL EXPERIMENT OUTPUTS
+# ============================================================
+
+ml/models/v3_runs/
+ml/models/v4_runs/
+
+ml/models/ais_motion_under90/
+ml/models/ais_motion_under90_final/
+
+
+# ============================================================
+# OBSOLETE RADAR MODEL ARTIFACTS
+# ============================================================
+
+ml/models/final/radar_final_best.pth
+ml/models/final/radar_v4_best.pth
+ml/models/final/radar_v4_deployment_config.json
+
+
+# ============================================================
+# IMPORTANT FINAL DEPLOYMENT MODELS
+#
+# DO NOT IGNORE:
+#
+# ml/models/final/ais_motion_gru_under90_deploy.pth
+# ml/models/v5_runs/radar_target89/radar_target89_best.pth
+#
+# They are intentionally allowed to remain in Git.
+# ============================================================
+
+
+# ============================================================
+# TEMPORARY UPLOADS / RUNTIME FILES
+# ============================================================
+
+backend/temp/
+backend/tmp/
+backend/uploads/
+temp/
+tmp/
+
+*.log
+
+
+# ============================================================
+# LOCAL DATABASE / CACHE FILES
+# ============================================================
+
+*.sqlite
+*.sqlite3
+*.db
+
+
+# ============================================================
+# LOCAL GENERATED HISTORY FALLBACK FILES
+# MongoDB is the primary persistence layer.
+# ============================================================
+
+backend/sea_prediction_history.json
+backend/hull_prediction_history.json
+
+
+# ============================================================
+# RESEARCH SCRATCH / REVIEW OUTPUT
+# ============================================================
+
+radar_retrain_review.txt
+
+
+# ============================================================
+# ARCHIVES / LARGE LOCAL BACKUPS
+# ============================================================
+
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+
+
+# ============================================================
+# NOTE:
+# Source code remains tracked, including:
+#
+# backend/**/*.py
+# frontend/src/**/*
+# ml/src/**/*.py
+#
+# Final deployment checkpoints remain allowed:
+#
+# ml/models/final/ais_motion_gru_under90_deploy.pth
+# ml/models/v5_runs/radar_target89/radar_target89_best.pth
+# ============================================================
+
+# Older / experimental model checkpoints
+ml/models/DeeperCNN_best.pth
+ml/models/GRU_best.pth
+ml/models/LSTM_best.pth
+ml/models/SimpleCNN_best.pth
+ml/models/SimpleRNN_best.pth
+ml/models/TinyVGG_best.pth
+ml/models/radar_cnn_3class.pth
+ml/models/radar_cnn_bird_ship.pth
+ml/models/ais_motion/
+
+# Training output
+runs/
