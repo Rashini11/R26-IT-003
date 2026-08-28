@@ -66,8 +66,9 @@ import "./App.css";
 /* ══════════════════════════════════════════════════════════
    BACKEND CONFIGURATION — do not modify endpoint names
    ══════════════════════════════════════════════════════════ */
-const API_BASE_URL = "http://localhost:8000";
-
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  
 /* ══════════════════════════════════════════════════════════
    MODULE DEFINITIONS
    Each module maps to a backend endpoint and has its own
