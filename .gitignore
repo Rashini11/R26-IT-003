@@ -247,3 +247,34 @@ ml/models/ais_motion/
 
 # Training output
 runs/
+
+# ============================================================
+# SEA STATE / SHARED PROJECT GENERATED FILES
+# ============================================================
+
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Large/generated Sea State datasets
+data/
+dataset.csv
+
+# Dataset caches
+*.cache
+
+# Downloaded pretrained/base weights
+yolo11n-cls.pt
+yolo11s-cls.pt
+yolo11m-cls.pt
+yolov8n.pt
+
+# Synthetic / generated radar data
+ml/synthetic_radar/
+
+# Old integration backup directories
+backend.before-simulation/
+frontend.before-simulation/
+backup-before-single-backend/
+
+# Node dependencies
+backend/node_modules/

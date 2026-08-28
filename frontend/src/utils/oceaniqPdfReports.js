@@ -1988,3 +1988,451 @@ export async function generateSimulationReport() {
     `OceanIQ_Live_Simulation_Report_${stamp}.pdf`
   );
 }
+
+
+// ============================================================
+// DATABASE REPORT
+// ============================================================
+
+export async function generateDatabaseReport() {
+  const [
+    radarResponse,
+    runsResponse,
+    eventsResponse,
+  ] = await Promise.all([
+    axios.get(
+      `${API_BASE_URL}/radar/history`,
+      { withCredentials: true }
+    ),
+
+    axios.get(
+      `${API_BASE_URL}/simulation/database/runs`,
+      { withCredentials: true }
+    ),
+
+    axios.get(
+      `${API_BASE_URL}/simulation/database/events`,
+      { withCredentials: true }
+    ),
+  ]);
+
+  const radarRecords = asArray(
+    radarResponse.data,
+    [
+      "records",
+      "history",
+      "radar_predictions",
+    ]
+  );
+
+  const runs = asArray(
+    runsResponse.data,
+    [
+      "runs",
+      "records",
+      "simulation_runs",
+    ]
+  );
+
+  const events = asArray(
+    eventsResponse.data,
+    [
+      "events",
+      "records",
+      "simulation_events",
+    ]
+  );
+
+  const ctx = createContext(
+    "Database Records Report",
+    "Stored OceanIQ Intelligence Records",
+    "DATABASE REPORT"
+  );
+
+  const { doc } = ctx;
+
+
+  // ----------------------------------------------------------
+  // DATABASE SUMMARY
+  // ----------------------------------------------------------
+
+  sectionTitle(
+    ctx,
+    1,
+    "Database Summary"
+  );
+
+  keyValueTable(
+    ctx,
+    [
+      [
+        "Generated",
+        new Date().toLocaleString(),
+      ],
+      [
+        "Database",
+        "OceanIQ MongoDB",
+      ],
+      [
+        "Radar Records",
+        radarRecords.length,
+      ],
+      [
+        "Simulation Runs",
+        runs.length,
+      ],
+      [
+        "Simulation Events",
+        events.length,
+      ],
+      [
+        "Collections",
+        "radar_predictions, simulation_runs, simulation_events",
+      ],
+    ]
+  );
+
+
+  // ----------------------------------------------------------
+  // RADAR RECORDS
+  // ----------------------------------------------------------
+
+  sectionTitle(
+    ctx,
+    2,
+    "Radar Classification Records"
+  );
+
+  if (!radarRecords.length) {
+    noteBox(
+      ctx,
+      "No Radar classification records are currently stored."
+    );
+  } else {
+    dataTable(
+      ctx,
+      [
+        "Time",
+        "Filename",
+        "Prediction",
+        "Confidence",
+        "Model",
+      ],
+
+      radarRecords
+        .slice(0, 20)
+        .map((record) => [
+          dateValue(
+            record.created_at ||
+            record.timestamp ||
+            record.predicted_at
+          ),
+
+          record.filename,
+
+          radarPrediction(record),
+
+          pct(record.confidence),
+
+          record.model_name ||
+          "RadarTargetCNN",
+        ]),
+
+      [
+        38,
+        52,
+        31,
+        28,
+        33,
+      ]
+    );
+  }
+
+
+  // ----------------------------------------------------------
+  // SIMULATION RUNS
+  // ----------------------------------------------------------
+
+  sectionTitle(
+    ctx,
+    3,
+    "Simulation Runs"
+  );
+
+  if (!runs.length) {
+    noteBox(
+      ctx,
+      "No simulation runs are currently stored."
+    );
+  } else {
+    dataTable(
+      ctx,
+      [
+        "Simulation ID",
+        "Mode",
+        "Status",
+        "Frames",
+        "Started",
+      ],
+
+      runs
+        .slice(0, 15)
+        .map((run) => [
+          run.simulation_id ||
+          run.scenario_id,
+
+          run.mode,
+
+          run.status,
+
+          run.frame_count,
+
+          dateValue(
+            run.started_at
+          ),
+        ]),
+
+      [
+        61,
+        29,
+        28,
+        22,
+        42,
+      ]
+    );
+  }
+
+
+  // ----------------------------------------------------------
+  // SIMULATION EVENTS
+  // ----------------------------------------------------------
+
+  sectionTitle(
+    ctx,
+    4,
+    "Recent Simulation Events"
+  );
+
+  if (!events.length) {
+    noteBox(
+      ctx,
+      "No simulation events are currently stored."
+    );
+  } else {
+    const recentEvents =
+      [...events]
+        .slice(-25)
+        .reverse();
+
+    dataTable(
+      ctx,
+      [
+        "Frame",
+        "Radar",
+        "Conf.",
+        "DCPA",
+        "TCPA",
+        "Risk",
+      ],
+
+      recentEvents.map(
+        (event) => [
+          event.frame_number,
+
+          eventRadarPrediction(
+            event
+          ),
+
+          pct(
+            eventRadarConfidence(
+              event
+            )
+          ),
+
+          event.encounter
+            ?.dcpa_nm != null
+            ? fixed(
+                event.encounter.dcpa_nm,
+                2
+              )
+            : "N/A",
+
+          event.encounter
+            ?.tcpa_minutes != null
+            ? fixed(
+                event.encounter.tcpa_minutes,
+                1
+              )
+            : "N/A",
+
+          event.encounter
+            ?.risk_level ||
+          event.encounter
+            ?.risk ||
+          "N/A",
+        ]
+      ),
+
+      [
+        22,
+        43,
+        27,
+        29,
+        29,
+        32,
+      ]
+    );
+  }
+
+
+  // ----------------------------------------------------------
+  // LATEST ENVIRONMENTAL RECORD
+  // ----------------------------------------------------------
+
+  const latestEvent =
+    events.length
+      ? events[events.length - 1]
+      : {};
+
+  const environment =
+    latestEvent.environment || {};
+
+  const atmospheric =
+    environment.atmospheric || {};
+
+  const marine =
+    environment.marine || {};
+
+
+  sectionTitle(
+    ctx,
+    5,
+    "Latest Stored Environmental Record"
+  );
+
+  if (!environment.available) {
+    noteBox(
+      ctx,
+      "No environmental record is available in the latest stored simulation event."
+    );
+  } else {
+    dataTable(
+      ctx,
+      [
+        "Parameter",
+        "Value",
+        "Parameter",
+        "Value",
+      ],
+
+      [
+        [
+          "Temperature",
+          atmospheric.temperature_c != null
+            ? `${fixed(
+                atmospheric.temperature_c,
+                1
+              )} C`
+            : "N/A",
+
+          "Wind Speed",
+          atmospheric.wind_speed_knots != null
+            ? `${fixed(
+                atmospheric.wind_speed_knots,
+                2
+              )} kn`
+            : "N/A",
+        ],
+
+        [
+          "Visibility",
+          atmospheric.visibility_km != null
+            ? `${fixed(
+                atmospheric.visibility_km,
+                1
+              )} km`
+            : "N/A",
+
+          "Pressure",
+          atmospheric.pressure_msl_hpa != null
+            ? `${fixed(
+                atmospheric.pressure_msl_hpa,
+                1
+              )} hPa`
+            : "N/A",
+        ],
+
+        [
+          "Wave Height",
+          marine.wave_height_m != null
+            ? `${fixed(
+                marine.wave_height_m,
+                2
+              )} m`
+            : "N/A",
+
+          "Swell Height",
+          marine.swell_height_m != null
+            ? `${fixed(
+                marine.swell_height_m,
+                2
+              )} m`
+            : "N/A",
+        ],
+
+        [
+          "Sea Temperature",
+          marine.sea_surface_temperature_c != null
+            ? `${fixed(
+                marine.sea_surface_temperature_c,
+                1
+              )} C`
+            : "N/A",
+
+          "Ocean Current",
+          marine.ocean_current_speed_knots != null
+            ? `${fixed(
+                marine.ocean_current_speed_knots,
+                2
+              )} kn`
+            : "N/A",
+        ],
+      ],
+
+      [
+        45,
+        46,
+        45,
+        46,
+      ]
+    );
+  }
+
+
+  // ----------------------------------------------------------
+  // STORAGE INFORMATION
+  // ----------------------------------------------------------
+
+  sectionTitle(
+    ctx,
+    6,
+    "Storage Information"
+  );
+
+  noteBox(
+    ctx,
+    "OceanIQ stores Radar classification results, simulation runs and per-frame simulation events in MongoDB. Simulation events may contain Radar classification, AIS vessel state, GRU prediction, DCPA/TCPA collision assessment and environmental context."
+  );
+
+
+  finishReport(ctx);
+
+  const stamp =
+    new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-");
+
+  doc.save(
+    `OceanIQ_Database_Report_${stamp}.pdf`
+  );
+}

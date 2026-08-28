@@ -1,0 +1,33 @@
+--IMAGE-ONLY SEA STATE CLASSIFICATION REPORT
+
+Dataset Size: 7200
+Train Size: 5040
+Validation Size: 1080
+Test Size: 1080
+
+Best Validation Accuracy: 99.17%
+Final Test Accuracy: 99.17%
+
+Label Mapping:
+0 = calm
+1 = moderate
+2 = rough
+3 = very_rough
+
+Classification Report:
+              precision    recall  f1-score   support
+
+        calm       0.99      0.99      0.99       269
+    moderate       0.98      0.99      0.99       272
+       rough       1.00      0.98      0.99       271
+  very_rough       1.00      1.00      1.00       268
+
+    accuracy                           0.99      1080
+   macro avg       0.99      0.99      0.99      1080
+weighted avg       0.99      0.99      0.99      1080
+
+Confusion Matrix:
+[[267   2   0   0]
+ [  1 270   1   0]
+ [  1   4 266   0]
+ [  0   0   0 268]]                                                            
