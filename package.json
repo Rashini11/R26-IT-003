@@ -8,8 +8,7 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "backend": "./venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000",
-    "frontend": "npm --prefix frontend run dev -- --host localhost --port 5173",
+    "backend": "node scripts/start-backend.js",    "frontend": "npm --prefix frontend run dev -- --host localhost --port 5173",
     "dev": "concurrently -k -n BACKEND,FRONTEND \"npm:backend\" \"npm:frontend\""
   },
   "repository": {
