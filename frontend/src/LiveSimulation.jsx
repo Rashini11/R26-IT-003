@@ -16,7 +16,6 @@ import {
   Square,
 } from "lucide-react";
 import MediaFitToggle from "./components/MediaFitToggle";
-import { SimulationDatabaseHistory } from "./DatabaseHistory";
 
 /*
  * SINGLE BACKEND CONFIGURATION
@@ -1093,7 +1092,6 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
 
       </div>
 
-      <SimulationDatabaseHistory />
 
       <section className="sim-panel sim-events">
 

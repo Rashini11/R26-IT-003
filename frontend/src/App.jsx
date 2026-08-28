@@ -43,6 +43,15 @@ import {
   LockKeyhole,
 } from "lucide-react";
 import LiveSimulation from "./LiveSimulation";
+
+import DatabaseViewer from "./DatabaseViewer";
+
+import {
+  generateRadarReport,
+  generateSimulationReport,
+} from "./utils/oceaniqPdfReports";
+
+
 import { RadarDatabaseHistory } from "./DatabaseHistory";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LogoutButton from "./components/LogoutButton";
@@ -133,6 +142,23 @@ const MODULES = {
     tag: "SAR · AIS · GRU · CPA",
     statusLabel: "SIMULATION CONTROL",
   },
+
+  database: {
+    id: "database",
+    label: "Database",
+    title: "OceanIQ Database",
+    endpoint: null,
+    description:
+      "Stored Radar classification and Live Simulation records.",
+    icon: Layers,
+    color: "#38bdf8",
+    lightColor: "#0369a1",
+    colorDim: "#38bdf822",
+    colorMid: "#38bdf855",
+    tag: "MongoDB Records",
+    statusLabel: "DATABASE",
+  },
+
 };
 
 /* ══════════════════════════════════════════════════════════
@@ -1238,7 +1264,6 @@ useEffect(() => {
               </div>
 
             </div>
-            <RadarDatabaseHistory />
 
           </div>
         )}
@@ -1370,7 +1395,58 @@ useEffect(() => {
           </div>
 
           <div className="cb-badges">
-            <ThemeToggle compact />
+            
+          {activeModule === "radar" && (
+            <button
+              type="button"
+              className="module-report-btn"
+              onClick={async () => {
+                try {
+                  await generateRadarReport();
+                } catch (error) {
+                  console.error(
+                    "Radar report generation failed:",
+                    error
+                  );
+
+                  alert(
+                    error?.message ||
+                    "Unable to generate Radar report."
+                  );
+                }
+              }}
+            >
+              <Download size={14} />
+              DOWNLOAD RADAR REPORT
+            </button>
+          )}
+
+          {activeModule === "simulation" && (
+            <button
+              type="button"
+              className="module-report-btn"
+              onClick={async () => {
+                try {
+                  await generateSimulationReport();
+                } catch (error) {
+                  console.error(
+                    "Simulation report generation failed:",
+                    error
+                  );
+
+                  alert(
+                    error?.message ||
+                    "Unable to generate Live Simulation report."
+                  );
+                }
+              }}
+            >
+              <Download size={14} />
+              DOWNLOAD SIMULATION REPORT
+            </button>
+          )}
+
+<ThemeToggle compact />
             <div className="badge-live"><span className="live-dot" />LIVE</div>
             <div className="badge-secure"><Shield size={12} />SECURE</div>
             <div className={`badge-access ${canWrite ? "badge-access--write" : "badge-access--read"}`}>
@@ -1403,7 +1479,9 @@ useEffect(() => {
           </div>
         )}
 
-        {activeModule === "simulation" ? (
+        {activeModule === "database" ? (
+          <DatabaseViewer />
+        ) : activeModule === "simulation" ? (
           <div className={!canWrite ? "simulation-readonly" : ""}>
             <LiveSimulation mediaFit={mediaFit} onMediaFitChange={setMediaFit} />
           </div>
