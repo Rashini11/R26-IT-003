@@ -13,6 +13,10 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
+VESSEL_CLASS_BOAT = 0
+VESSEL_CLASS_SHIP = 1
+VESSEL_CLASS_SL_FLAG = 2
+
 # Optional classifier dependencies
 try:
     import torch
@@ -138,7 +142,7 @@ def run_pipeline(weights, source, outpath=None, flag_overlap_thresh=0.25, show=F
     img = frame.copy()
 
     # Run inference
-    results = model(img)[0]  # first (and only) result
+    results = model(img, conf=0.50, iou=0.45, verbose=False)[0]
     boxes = []
     if hasattr(results, "boxes") and len(results.boxes) > 0:
         xyxy = results.boxes.xyxy.cpu().numpy()  # N x 4
@@ -159,10 +163,14 @@ def run_pipeline(weights, source, outpath=None, flag_overlap_thresh=0.25, show=F
     vessels = []  # boat or ship
     flags = []    # sl_flag
     for det in boxes:
-        if det["class"] in (0,1):  # boat or ship
+        if det["class"] in (VESSEL_CLASS_BOAT, VESSEL_CLASS_SHIP):
             vessels.append(det)
-        elif det["class"] == 2:    # sl_flag
+        elif det["class"] == VESSEL_CLASS_SL_FLAG:
             flags.append(det)
+
+    # Keep one highest-confidence vessel and one highest-confidence flag.
+    vessels = sorted(vessels, key=lambda detection: detection["conf"], reverse=True)[:1]
+    flags = sorted(flags, key=lambda detection: detection["conf"], reverse=True)[:1]
 
     # For each vessel, check flags and assign final label
     h_img, w_img = img.shape[:2]
@@ -208,19 +216,18 @@ def run_pipeline(weights, source, outpath=None, flag_overlap_thresh=0.25, show=F
             except Exception as e:
                 print("Classifier inference failed:", e)
 
-        v_type = "Boat" if v["class"] == 0 else "Ship"
+        v_type = "Boat" if v["class"] == VESSEL_CLASS_BOAT else "Ship"
         final_label = ("Local " if is_local else "Foreign ") + v_type
         color = (0,255,0) if is_local else (0,0,255)  # BGR: green for Local, red for Foreign
 
         # Draw vessel box with final label
         draw_box(img, vbox, label=final_label, color=color, thickness=3)
 
-        # Draw matched flag(s) (if any) in yellow, otherwise draw all flag detections faintly
+        # Draw the selected flag in yellow, or the selected unmatched flag in cyan.
         if matched_flags:
             for mf in matched_flags:
                 draw_box(img, mf["xyxy"], label="sl_flag", color=(0,215,255), thickness=2)
         else:
-            # optional: draw flags that were detected but not matched in cyan
             for f in flags:
                 draw_box(img, f["xyxy"], label="sl_flag", color=(255,255,0), thickness=1)
 

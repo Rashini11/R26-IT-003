@@ -1459,6 +1459,10 @@ p { margin: 0; }
   border-radius: var(--r-sm);
   background: rgba(5, 20, 33, .72);
 }
+.sea-history-section {
+  margin-top: 50px;
+  padding: 20px 22px 22px;
+}
 .sea-feature-title {
   margin: 0 0 10px;
   color: var(--success);
@@ -1566,8 +1570,8 @@ p { margin: 0; }
 .sea-history-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 8px;
-  margin-top: 10px;
+  gap: 10px;
+  margin-top: 16px;
 }
 .sea-history-card {
   padding: 10px;
@@ -1578,11 +1582,43 @@ p { margin: 0; }
 .sea-history-card strong { display: block; margin-top: 4px; color: var(--success); text-transform: uppercase; }
 .sea-history-card p { margin-top: 4px; }
 
+.vessel-history-panel {
+  min-height: 0;
+  margin: 14px 24px 18px;
+  padding: 18px 22px 20px;
+  gap: 12px;
+  border-color: rgba(0, 212, 255, .22);
+  background: rgba(5, 20, 33, .88);
+}
+.vessel-history-panel .sea-history-header {
+  padding-bottom: 4px;
+}
+.vessel-history-panel .sea-feature-title {
+  margin-bottom: 0;
+}
+.vessel-history-panel .sea-history-grid {
+  margin-top: 8px;
+}
+
 @media (max-width: 720px) {
   .sea-risk-topline,
   .sea-suitability-head,
   .sea-history-header,
   .sea-recommendation-row { align-items: flex-start; flex-direction: column; }
+}
+
+@media (max-width: 768px) {
+  .vessel-history-panel {
+    margin: 12px 14px 16px;
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .vessel-history-panel {
+    margin: 10px 10px 14px;
+    padding: 14px 12px 16px;
+  }
 }
 
 .boat-summary-card {

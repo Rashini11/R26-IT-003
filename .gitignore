@@ -278,3 +278,6 @@ backup-before-single-backend/
 
 # Node dependencies
 backend/node_modules/
+
+# Vessel detection generated training checkpoint
+best.pt
