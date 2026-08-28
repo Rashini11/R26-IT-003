@@ -57,6 +57,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+
+        # Keep these if you may use these ports later
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
@@ -298,13 +302,28 @@ def _save_local_vessel_history(history):
 # HULL DEFECT MODEL - TENSORFLOW
 # =====================================================
 hull_model = None
-hull_classes = ["biofouling", "corrosion", "cracks", "paint_damage"]
+hull_classes = [
+    "biofouling",
+    "corrosion",
+    "cracks",
+    "non_hull",
+    "paint_damage",
+    
+]
+
+# =====================================================
+# HULL IMAGE VALIDATION SETTINGS
+# =====================================================
+
+HULL_CONFIDENCE_THRESHOLD = 0.70
+NON_HULL_THRESHOLD = 0.50
 
 recommendations = {
     "biofouling": "Clean hull using high-pressure water or antifouling treatment.",
     "corrosion": "Apply anti-corrosion coating or replace damaged metal.",
     "cracks": "Critical damage. Perform welding repair immediately.",
-    "paint_damage": "Inspect the affected area and repair or reapply marine-grade protective coating."
+    "paint_damage": "Inspect the affected area and repair or reapply marine-grade protective coating.",
+    "non_hull": "The uploaded image does not appear to show a ship hull. Please upload a clear underwater hull image."
 }
 
 try:
@@ -354,6 +373,51 @@ except Exception as e:
         e,
     )
     hull_model = None
+
+
+def validate_hull_image(image):
+    """
+    Basic image-quality validation before hull classification.
+    This does NOT determine whether the image is a hull.
+    """
+
+    if image is None:
+        return {
+            "is_valid": False,
+            "reason": "Invalid image.",
+            "contrast": 0,
+        }
+
+    height, width = image.shape[:2]
+
+    if height < 100 or width < 100:
+        return {
+            "is_valid": False,
+            "reason": "Image resolution is too low.",
+            "contrast": 0,
+        }
+
+    gray = cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2GRAY
+    )
+
+    contrast = float(np.std(gray))
+
+    if contrast < 12:
+        return {
+            "is_valid": False,
+            "reason": "Image has very low visual detail.",
+            "contrast": round(contrast, 2),
+        }
+
+    return {
+        "is_valid": True,
+        "reason": "Image quality is sufficient for analysis.",
+        "contrast": round(contrast, 2),
+        "width": width,
+        "height": height,
+    }
 
 
 def make_gradcam_heatmap(
@@ -516,17 +580,49 @@ async def predict_hull_defect(
 
         original_img = img.copy()
 
-        img_resized = (
-            cv2.resize(
-                img,
-                (224, 224),
-            )
-            / 255.0
+        # =====================================================
+        # HULL IMAGE VALIDATION
+        # =====================================================
+
+        validation = validate_hull_image(
+            original_img
+        )
+
+        if not validation["is_valid"]:
+
+            return {
+                "prediction": None,
+                "confidence": 0,
+                "valid_hull_image": False,
+                "detected_defects": [],
+                "multiple_defects": False,
+                "recommendation": None,
+                "warning": validation["reason"],
+                "validation": validation,
+                "gradcam": None,
+            }
+
+        # =====================================================
+        # PREPROCESS IMAGE FOR HULL DEFECT MODEL
+        # =====================================================
+
+        img_resized = cv2.resize(
+            img,
+            (224, 224),
+        )
+
+        img_resized = cv2.cvtColor(
+            img_resized,
+            cv2.COLOR_BGR2RGB,
         )
 
         img_array = np.expand_dims(
-            img_resized,
+            img_resized.astype(np.float32),
             axis=0,
+        )
+
+        img_array = tf.keras.applications.mobilenet_v2.preprocess_input(
+            img_array
         )
 
         preds = hull_model.predict(
@@ -537,11 +633,78 @@ async def predict_hull_defect(
         # Get probabilities for every defect class
         probabilities = preds[0]
 
-        # Primary prediction
+        print("\n========== HULL PREDICTION DEBUG ==========")
+
+        for i, prob in enumerate(probabilities):
+            print(
+                f"{hull_classes[i]}: {float(prob) * 100:.2f}%"
+            )
+
+        print("===========================================\n")
+
+        non_hull_idx = hull_classes.index("non_hull")
+        non_hull_confidence = float(
+        probabilities[non_hull_idx]
+)
+
+        # =====================================================
+        # PRIMARY PREDICTION
+        # =====================================================
+
         class_idx = int(np.argmax(probabilities))
         prediction = hull_classes[class_idx]
 
         confidence = float(probabilities[class_idx])
+
+       
+
+        # =====================================================
+        # NON-HULL DETECTION
+        # =====================================================
+
+        if non_hull_confidence >= NON_HULL_THRESHOLD:
+
+            return {
+                "prediction": "non_hull",
+                "confidence": round(confidence * 100, 2),
+                "valid_hull_image": False,
+                "detected_defects": [],
+                "multiple_defects": False,
+                "recommendation": (
+                    "The uploaded image does not appear to show "
+                    "a ship hull. Please upload a clear underwater "
+                    "hull image."
+                ),
+                "warning": (
+                    "This image was classified as non-hull."
+                ),
+                "validation": validation,
+                "gradcam": None,
+            }
+
+        # =====================================================
+        # CONFIDENCE VALIDATION
+        # =====================================================
+
+        if confidence < HULL_CONFIDENCE_THRESHOLD:
+
+            return {
+                "prediction": "uncertain",
+                "confidence": round(confidence * 100, 2),
+                "valid_hull_image": True,
+                "detected_defects": [],
+                "multiple_defects": False,
+                "recommendation": (
+                    "The image appears to show a hull, "
+                    "but no defect could be classified reliably. "
+                    "Please upload a clearer hull image."
+                ),
+                "warning": (
+                    "Low confidence. Manual inspection recommended."
+                ),
+                "validation": validation,
+                "gradcam": None,
+            } 
 
         # =====================================================
         # HULL DEFECT PROBABILITIES
@@ -552,9 +715,15 @@ async def predict_hull_defect(
 
         for i, prob in enumerate(probabilities):
 
+            if hull_classes[i] == "non_hull":
+                continue
+
             detected_defects.append({
                 "defect": hull_classes[i],
-                "confidence": round(float(prob) * 100, 2)
+                "confidence": round(
+                    float(prob) * 100,
+                    2
+                )
             })
 
         # Sort highest probability first
@@ -582,12 +751,11 @@ async def predict_hull_defect(
 
         # Only report multiple defects when there are
         # actually meaningful secondary predictions.
-        multiple_defects = len(secondary_defects) > 0
+        multiple_defects = False
 
-        # Limit the output to maximum 3 defects
         reported_defects = [
             primary_defect
-        ] + secondary_defects[:2]
+        ] 
 
         # =====================================================
         # RECOMMENDATION
@@ -660,7 +828,7 @@ async def predict_hull_defect(
         warning = (
             "Low confidence. Manual "
             "inspection recommended."
-            if confidence < 0.7
+            if confidence < HULL_CONFIDENCE_THRESHOLD
             else "Prediction reliable."
         )
 
@@ -685,6 +853,7 @@ async def predict_hull_defect(
         return {
             "prediction": prediction,
             "confidence": round(confidence * 100, 2),
+            "valid_hull_image": True,
             "detected_defects": detected_defects,
             "multiple_defects": multiple_defects,
             "recommendation": recommendation,

@@ -281,3 +281,6 @@ backend/node_modules/
 
 # Vessel detection generated training checkpoint
 best.pt
+
+# Hull condition assessment test images
+test_images/
