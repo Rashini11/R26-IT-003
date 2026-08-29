@@ -29,6 +29,7 @@ Desktop.ini
 .classpath
 
 
+
 # ============================================================
 # PYTHON
 # ============================================================
@@ -284,3 +285,5 @@ best.pt
 
 # Hull condition assessment test images
 test_images/
+
+debug/

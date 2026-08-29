@@ -1,4 +1,4 @@
-import os
+﻿import os
 import json
 import shutil
 import base64
@@ -76,7 +76,7 @@ app.add_middleware(
 # MongoDB-backed users + server-side sessions.
 # The browser receives only an HttpOnly session cookie.
 # =====================================================
-from .auth import (
+from auth import (
     router as auth_router,
     require_authenticated_request,
 )
@@ -128,6 +128,12 @@ HULL_MODEL_PATH = os.path.join(
     BASE_DIR,
     "model",
     "hull_model.keras",
+)
+
+HULL_VALIDATOR_MODEL_PATH = os.path.join(
+    BASE_DIR,
+    "model",
+    "hull_validator.keras",
 )
 
 SEA_MODEL_PATH = os.path.join(
@@ -306,7 +312,6 @@ hull_classes = [
     "biofouling",
     "corrosion",
     "cracks",
-    "non_hull",
     "paint_damage",
     
 ]
@@ -316,14 +321,13 @@ hull_classes = [
 # =====================================================
 
 HULL_CONFIDENCE_THRESHOLD = 0.70
-NON_HULL_THRESHOLD = 0.50
+
 
 recommendations = {
     "biofouling": "Clean hull using high-pressure water or antifouling treatment.",
     "corrosion": "Apply anti-corrosion coating or replace damaged metal.",
     "cracks": "Critical damage. Perform welding repair immediately.",
     "paint_damage": "Inspect the affected area and repair or reapply marine-grade protective coating.",
-    "non_hull": "The uploaded image does not appear to show a ship hull. Please upload a clear underwater hull image."
 }
 
 try:
@@ -375,6 +379,46 @@ except Exception as e:
     hull_model = None
 
 
+# =====================================================
+# HULL / NON-HULL VALIDATOR MODEL
+# =====================================================
+
+hull_validator_model = None
+
+try:
+    if os.path.exists(HULL_VALIDATOR_MODEL_PATH):
+
+        print(
+            "Loading hull validator from:",
+            HULL_VALIDATOR_MODEL_PATH,
+        )
+
+        hull_validator_model = tf.keras.models.load_model(
+            HULL_VALIDATOR_MODEL_PATH,
+            compile=False,
+        )
+
+        print(
+            "Hull validator loaded successfully"
+        )
+
+    else:
+
+        print(
+            "WARNING: Hull validator model not found:",
+            HULL_VALIDATOR_MODEL_PATH,
+        )
+
+except Exception as e:
+
+    print(
+        "ERROR loading hull validator:",
+        e,
+    )
+
+    hull_validator_model = None
+
+
 def validate_hull_image(image):
     """
     Basic image-quality validation before hull classification.
@@ -419,6 +463,93 @@ def validate_hull_image(image):
         "height": height,
     }
 
+
+# =====================================================
+# HULL / NON-HULL CLASSIFICATION
+# =====================================================
+
+HULL_VALIDATOR_THRESHOLD = 0.70
+
+
+def classify_hull_or_non_hull(image):
+
+    if hull_validator_model is None:
+
+        return {
+            "is_hull": False,
+            "hull_confidence": 0,
+            "non_hull_confidence": 0,
+            "message": "Hull validator model is not available.",
+        }
+
+    resized = cv2.resize(
+        image,
+        (224, 224),
+    )
+
+    resized = cv2.cvtColor(
+        resized,
+        cv2.COLOR_BGR2RGB,
+    )
+
+    image_array = np.expand_dims(
+        resized.astype(np.float32),
+        axis=0,
+    )
+
+    # IMPORTANT:
+    # The validator model already contains
+    # MobileNetV2 preprocessing in its input pipeline.
+    prediction = hull_validator_model.predict(
+        image_array,
+        verbose=0,
+    )[0][0]
+
+    non_hull_probability = float(prediction)
+
+    hull_probability = 1.0 - non_hull_probability
+
+    print("\n========== HULL VALIDATOR ==========")
+    print(
+        f"Hull: {hull_probability * 100:.2f}%"
+    )
+    print(
+        f"Non-Hull: {non_hull_probability * 100:.2f}%"
+    )
+    print("====================================\n")
+
+    if non_hull_probability >= HULL_VALIDATOR_THRESHOLD:
+
+        return {
+            "is_hull": False,
+            "hull_confidence": round(
+                hull_probability * 100,
+                2,
+            ),
+            "non_hull_confidence": round(
+                non_hull_probability * 100,
+                2,
+            ),
+            "message": (
+                "The uploaded image does not appear "
+                "to show an underwater ship hull."
+            ),
+        }
+
+    return {
+        "is_hull": True,
+        "hull_confidence": round(
+            hull_probability * 100,
+            2,
+        ),
+        "non_hull_confidence": round(
+            non_hull_probability * 100,
+            2,
+        ),
+        "message": (
+            "Underwater hull image accepted."
+        ),
+    }
 
 def make_gradcam_heatmap(
     img_array,
@@ -599,8 +730,50 @@ async def predict_hull_defect(
                 "recommendation": None,
                 "warning": validation["reason"],
                 "validation": validation,
+                "hull_validation": None,
                 "gradcam": None,
             }
+
+
+        # =====================================================
+        # HULL / NON-HULL VALIDATION
+        # =====================================================
+
+        hull_validation = classify_hull_or_non_hull(
+            original_img
+        )
+
+        print(
+            "Hull validation result:",
+            hull_validation
+        )
+
+
+        # =====================================================
+        # REJECT NON-HULL IMAGE
+        # =====================================================
+
+        if not hull_validation["is_hull"]:
+
+            return {
+                "prediction": None,
+                "confidence": 0,
+                "valid_hull_image": False,
+                "detected_defects": [],
+                "multiple_defects": False,
+                "recommendation": (
+                    "Please upload a clear underwater "
+                    "ship-hull inspection image."
+                ),
+                "warning": (
+                    "Non-hull image detected. "
+                    "Defect classification was not performed."
+                ),
+                "validation": validation,
+                "hull_validation": hull_validation,
+                "gradcam": None,
+            }
+
 
         # =====================================================
         # PREPROCESS IMAGE FOR HULL DEFECT MODEL
@@ -633,6 +806,23 @@ async def predict_hull_defect(
         # Get probabilities for every defect class
         probabilities = preds[0]
 
+        if len(probabilities) != len(hull_classes):
+            return {
+                "prediction": None,
+                "confidence": 0,
+                "valid_hull_image": False,
+                "detected_defects": [],
+                "multiple_defects": False,
+                "recommendation": None,
+                "warning": (
+                    f"Model output mismatch: "
+                    f"model returned {len(probabilities)} outputs, "
+                    f"but backend expects {len(hull_classes)} classes."
+                ),
+                "validation": validation,
+                "gradcam": None,
+            }
+
         print("\n========== HULL PREDICTION DEBUG ==========")
 
         for i, prob in enumerate(probabilities):
@@ -642,10 +832,7 @@ async def predict_hull_defect(
 
         print("===========================================\n")
 
-        non_hull_idx = hull_classes.index("non_hull")
-        non_hull_confidence = float(
-        probabilities[non_hull_idx]
-)
+        
 
         # =====================================================
         # PRIMARY PREDICTION
@@ -657,30 +844,6 @@ async def predict_hull_defect(
         confidence = float(probabilities[class_idx])
 
        
-
-        # =====================================================
-        # NON-HULL DETECTION
-        # =====================================================
-
-        if non_hull_confidence >= NON_HULL_THRESHOLD:
-
-            return {
-                "prediction": "non_hull",
-                "confidence": round(confidence * 100, 2),
-                "valid_hull_image": False,
-                "detected_defects": [],
-                "multiple_defects": False,
-                "recommendation": (
-                    "The uploaded image does not appear to show "
-                    "a ship hull. Please upload a clear underwater "
-                    "hull image."
-                ),
-                "warning": (
-                    "This image was classified as non-hull."
-                ),
-                "validation": validation,
-                "gradcam": None,
-            }
 
         # =====================================================
         # CONFIDENCE VALIDATION
@@ -714,9 +877,6 @@ async def predict_hull_defect(
         detected_defects = []
 
         for i, prob in enumerate(probabilities):
-
-            if hull_classes[i] == "non_hull":
-                continue
 
             detected_defects.append({
                 "defect": hull_classes[i],
@@ -2076,7 +2236,7 @@ async def get_boat_detection_video(filename: str):
 
 
 # =====================================================
-# RADAR OBJECT CLASSIFICATION MODEL — V4 RAW
+# RADAR OBJECT CLASSIFICATION MODEL â€” V4 RAW
 # MobileNetV3-Small
 #
 # Input:
@@ -2340,7 +2500,7 @@ def classify_radar_image_path(
         )
 
         decision_status = (
-            "Classification accepted — "
+            "Classification accepted â€” "
             "confidence meets the "
             "deployment threshold"
         )
@@ -2349,7 +2509,7 @@ def classify_radar_image_path(
         final_prediction = "unknown"
 
         decision_status = (
-            "Confidence below threshold — "
+            "Confidence below threshold â€” "
             "classification marked unknown"
         )
 
@@ -2631,7 +2791,7 @@ def radar_history(
 # Register the shared Radar classifier with the Live Simulation.
 # The simulation therefore performs trusted in-process inference
 # and does NOT bypass or weaken the HTTP authentication layer.
-from .simulation.sar_streamer import (
+from simulation.sar_streamer import (
     configure_internal_radar_classifier,
 )
 
@@ -2647,7 +2807,7 @@ configure_internal_radar_classifier(
 # routes are defined. backend/simulation/app.py no longer
 # creates another FastAPI application.
 # =====================================================
-from .simulation.app import (
+from simulation.app import (
     router as simulation_router,
     configure_simulation_persistence,
 )
@@ -2680,6 +2840,9 @@ def health():
         "models": {
             "hull_model_loaded": (
                 hull_model is not None
+            ),
+            "hull_validator_loaded": (
+                hull_validator_model is not None
             ),
             "sea_model_loaded": (
                 sea_model is not None
@@ -2760,3 +2923,4 @@ def home():
             ),
         },
     }
+
