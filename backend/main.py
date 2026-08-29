@@ -29,6 +29,7 @@ from PIL import Image, ImageStat, ImageEnhance, ImageFilter
 
 from fastapi import FastAPI, UploadFile, File, Form, Depends
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from ultralytics import YOLO
@@ -2710,7 +2711,7 @@ def health():
 # =====================================================
 # HOME ROUTE
 # =====================================================
-@app.get("/")
+@app.get("/api-info")
 def home():
     return {
         "message": (
@@ -2765,3 +2766,32 @@ def home():
             ),
         },
     }
+
+
+# ============================================================
+# PRODUCTION REACT FRONTEND
+# Keep this section LAST so existing API routes take priority.
+# ============================================================
+
+FRONTEND_DIST = BASE_PATH / "frontend" / "dist"
+
+if FRONTEND_DIST.exists():
+    assets_dir = FRONTEND_DIST / "assets"
+
+    if assets_dir.exists():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=str(assets_dir)),
+            name="frontend-assets",
+        )
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_react_app(full_path: str):
+        requested_file = FRONTEND_DIST / full_path
+
+        if full_path and requested_file.is_file():
+            return FileResponse(str(requested_file))
+
+        return FileResponse(
+            str(FRONTEND_DIST / "index.html")
+        )
