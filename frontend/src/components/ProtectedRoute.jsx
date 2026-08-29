@@ -1,6 +1,7 @@
 import { Clock3, RefreshCw, ShieldX } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import Login from "./Login";
+import ThemeToggle from "./ThemeToggle";
 import "./Login.css";
 
 function AccessStatus() {
@@ -8,6 +9,7 @@ function AccessStatus() {
 
   return (
     <div className="auth-page">
+      <div className="auth-theme-control"><ThemeToggle /></div>
       <div className="auth-grid" />
       <div className="auth-panel-wrap" style={{ gridColumn: "1 / -1" }}>
         <div className="auth-panel auth-status-card">
@@ -49,6 +51,7 @@ function ProtectedRoute({ children }) {
   if (loading) {
     return (
       <div className="auth-page">
+        <div className="auth-theme-control"><ThemeToggle /></div>
         <div className="auth-grid" />
         <div className="auth-panel-wrap" style={{ gridColumn: "1 / -1" }}>
           <div className="auth-panel auth-status-card">

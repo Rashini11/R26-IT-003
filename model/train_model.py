@@ -1,32 +1,40 @@
 import tensorflow as tf
-from tensorflow.keras import layers, models
+from tensorflow.keras import layers
 import matplotlib.pyplot as plt
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.utils.class_weight import compute_class_weight
 import numpy as np
 import seaborn as sns
+from pathlib import Path
+import json
+import os
 
-# =========================
-# 📁 Dataset paths
-# =========================
+# =====================================================
+# DATASET PATHS
+# =====================================================
+
 train_dir = "data/processed/images/train"
 val_dir = "data/processed/images/val"
 test_dir = "data/processed/images/test"
 
-# =========================
-# 📦 Load datasets
-# =========================
+# =====================================================
+# LOAD DATASETS
+# =====================================================
+
 train_ds = tf.keras.utils.image_dataset_from_directory(
     train_dir,
     image_size=(224, 224),
-    batch_size=32
+    batch_size=16,
+    shuffle=True,
+    seed=42
 )
 
 val_ds = tf.keras.utils.image_dataset_from_directory(
     val_dir,
     image_size=(224, 224),
-    batch_size=32
+    batch_size=32,
+    shuffle=False
 )
 
 test_ds = tf.keras.utils.image_dataset_from_directory(
@@ -36,152 +44,398 @@ test_ds = tf.keras.utils.image_dataset_from_directory(
     shuffle=False
 )
 
+# =====================================================
+# CHECK CLASS ORDER
+# =====================================================
+
+print("\n========== HULL DATASET ==========")
+
+print("TRAIN CLASSES:", train_ds.class_names)
+print("VAL CLASSES:", val_ds.class_names)
+print("TEST CLASSES:", test_ds.class_names)
+
 class_names = train_ds.class_names
-print("Classes:", class_names)
 
-# =========================
-# ⚡ Optimization
-# =========================
-AUTOTUNE = tf.data.AUTOTUNE
+expected_classes = [
+    "biofouling",
+    "corrosion",
+    "cracks",
+    "non_hull",
+    "paint_damage",
+]
 
-normalization_layer = layers.Rescaling(1./255)
+if class_names != expected_classes:
+    raise ValueError(
+        f"Unexpected class order: {class_names}\n"
+        f"Expected: {expected_classes}"
+    )
 
-train_ds = train_ds.map(lambda x, y: (normalization_layer(x), y)).prefetch(AUTOTUNE)
-val_ds = val_ds.map(lambda x, y: (normalization_layer(x), y)).prefetch(AUTOTUNE)
-test_ds = test_ds.map(lambda x, y: (normalization_layer(x), y)).prefetch(AUTOTUNE)
+if val_ds.class_names != expected_classes:
+    raise ValueError(
+        f"Unexpected validation class order: {val_ds.class_names}"
+    )
 
-# =========================
-# 🔁 Data Augmentation (STRONGER)
-# =========================
+if test_ds.class_names != expected_classes:
+    raise ValueError(
+        f"Unexpected test class order: {test_ds.class_names}"
+    )
+
+# =====================================================
+# DATASET DISTRIBUTION
+# =====================================================
+
+print("\n========== DATASET DISTRIBUTION ==========")
+
+for class_name in class_names:
+
+    train_count = len(
+        tf.io.gfile.glob(
+            f"{train_dir}/{class_name}/*"
+        )
+    )
+
+    val_count = len(
+        tf.io.gfile.glob(
+            f"{val_dir}/{class_name}/*"
+        )
+    )
+
+    test_count = len(
+        tf.io.gfile.glob(
+            f"{test_dir}/{class_name}/*"
+        )
+    )
+
+    print(
+        f"{class_name}: "
+        f"train={train_count}, "
+        f"val={val_count}, "
+        f"test={test_count}"
+    )
+
+print("==========================================\n")
+
+# =====================================================
+# MOBILE NET V2 PREPROCESSING
+# MobileNetV2 expects pixel values in [-1, 1]
+# =====================================================
+
+preprocess_input = tf.keras.applications.mobilenet_v2.preprocess_input
+
+def preprocess_dataset(images, labels):
+    images = tf.cast(images, tf.float32)
+    images = preprocess_input(images)
+    return images, labels
+
+train_ds = train_ds.map(
+    preprocess_dataset,
+    num_parallel_calls=tf.data.AUTOTUNE
+)
+
+val_ds = val_ds.map(
+    preprocess_dataset,
+    num_parallel_calls=tf.data.AUTOTUNE
+)
+
+test_ds = test_ds.map(
+    preprocess_dataset,
+    num_parallel_calls=tf.data.AUTOTUNE
+)
+
+train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
+val_ds = val_ds.prefetch(tf.data.AUTOTUNE)
+test_ds = test_ds.prefetch(tf.data.AUTOTUNE)
+
+# =====================================================
+# DATA AUGMENTATION
+# =====================================================
+
 data_augmentation = tf.keras.Sequential([
     layers.RandomFlip("horizontal"),
-    layers.RandomRotation(0.1),
-    layers.RandomZoom(0.1),
-    layers.RandomContrast(0.1),
-])
+    layers.RandomRotation(0.10),
+    layers.RandomZoom(0.10),
+    layers.RandomContrast(0.10),
+], name="data_augmentation")
 
-# =========================
-# ⚖️ Class Weights
-# =========================
-train_labels = np.concatenate([y for x, y in train_ds], axis=0)
+# =====================================================
+# CLASS WEIGHTS
+# =====================================================
 
-class_weights = compute_class_weight(
-    class_weight='balanced',
-    classes=np.unique(train_labels),
+train_labels = np.concatenate(
+    [y.numpy() for x, y in train_ds],
+    axis=0
+)
+
+class_weights_array = compute_class_weight(
+    class_weight="balanced",
+    classes=np.arange(len(class_names)),
     y=train_labels
 )
 
-class_weights = dict(enumerate(class_weights))
-print("Class Weights:", class_weights)
+class_weights = {
+    i: float(weight)
+    for i, weight in enumerate(class_weights_array)
+}
 
-# =========================
-# 🧠 MobileNetV2
-# =========================
+print("\n========== CLASS WEIGHTS ==========")
+
+for i, weight in class_weights.items():
+    print(
+        f"{class_names[i]}: {weight:.3f}"
+    )
+
+print("===================================\n")
+
+# =====================================================
+# MOBILENETV2
+# =====================================================
+
 base_model = tf.keras.applications.MobileNetV2(
     input_shape=(224, 224, 3),
     include_top=False,
-    weights='imagenet'
+    weights="imagenet"
 )
 
-# 🔥 Fine-tuning
-base_model.trainable = False  # Start with frozen layers
+# Freeze most layers.
+# Fine-tune only the final 30 layers.
 
-# =========================
-# 🧠 Functional Model (Grad-CAM Friendly)
-# =========================
-inputs = tf.keras.Input(shape=(224, 224, 3))
+base_model.trainable = True
+
+for layer in base_model.layers[:-30]:
+    layer.trainable = False
+
+# =====================================================
+# MODEL
+# =====================================================
+
+inputs = tf.keras.Input(
+    shape=(224, 224, 3),
+    name="image_input"
+)
 
 x = data_augmentation(inputs)
-x = base_model(x, training=False)
-x = layers.GlobalAveragePooling2D()(x)
-x = layers.BatchNormalization()(x)
-x = layers.Dense(128, activation='relu')(x)
-x = layers.Dropout(0.5)(x)
 
-outputs = layers.Dense(len(class_names), activation='softmax')(x)
+x = base_model(
+    x,
+    training=False
+)
 
-model = tf.keras.Model(inputs, outputs)
+x = layers.GlobalAveragePooling2D(
+    name="global_average_pooling"
+)(x)
 
-# =========================
-# ⚙️ Compile (with label smoothing)
-# =========================
+x = layers.BatchNormalization(
+    name="batch_normalization"
+)(x)
+
+x = layers.Dense(
+    128,
+    activation="relu",
+    name="dense_128"
+)(x)
+
+x = layers.Dropout(
+    0.4,
+    name="dropout"
+)(x)
+
+outputs = layers.Dense(
+    len(class_names),
+    activation="softmax",
+    name="hull_prediction"
+)(x)
+
+model = tf.keras.Model(
+    inputs,
+    outputs
+)
+
+# =====================================================
+# COMPILE
+# =====================================================
+
 model.compile(
-    optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001),
-    loss='sparse_categorical_crossentropy',
-    metrics=['accuracy']
+    optimizer=tf.keras.optimizers.Adam(
+        learning_rate=1e-5
+    ),
+    loss="sparse_categorical_crossentropy",
+    metrics=["accuracy"]
 )
 
-# =========================
-# ⏹️ Callbacks
-# =========================
-early_stop = EarlyStopping(
-    monitor='val_loss',
-    patience=4,
-    restore_best_weights=True
-)
+model.summary()
 
-reduce_lr = ReduceLROnPlateau(
-    monitor='val_loss',
-    factor=0.3,
-    patience=2,
-    min_lr=1e-6
-)
+# =====================================================
+# CALLBACKS
+# =====================================================
 
-# =========================
-# 🚀 Train
-# =========================
+callbacks = [
+
+    EarlyStopping(
+        monitor="val_loss",
+        patience=6,
+        restore_best_weights=True
+    ),
+
+    ReduceLROnPlateau(
+        monitor="val_loss",
+        factor=0.5,
+        patience=2,
+        min_lr=1e-7,
+        verbose=1
+    )
+]
+
+# =====================================================
+# TRAIN
+# =====================================================
+
+print("\n========== STARTING TRAINING ==========\n")
+
 history = model.fit(
     train_ds,
     validation_data=val_ds,
-    epochs=25,
-    callbacks=[early_stop, reduce_lr],
-    class_weight=class_weights
+    epochs=30,
+    class_weight=class_weights,
+    callbacks=callbacks
 )
 
-# =========================
-# 💾 Save Model (Grad-CAM Compatible)
-# =========================
-model.save("model/hull_model.keras", include_optimizer=False)
+# =====================================================
+# SAVE CLASS NAMES
+# =====================================================
 
-# =========================
-# 📊 Plot Accuracy
-# =========================
-plt.plot(history.history['accuracy'], label='train accuracy')
-plt.plot(history.history['val_accuracy'], label='val accuracy')
+os.makedirs("model", exist_ok=True)
+
+with open(
+    "model/hull_class_names.json",
+    "w"
+) as f:
+
+    json.dump(
+        class_names,
+        f,
+        indent=2
+    )
+
+# =====================================================
+# SAVE MODEL
+# =====================================================
+
+model.save(
+    "model/hull_model.keras",
+    include_optimizer=False
+)
+
+print(
+    "\nModel saved to:"
+    "\nmodel/hull_model.keras"
+)
+
+# =====================================================
+# TRAINING ACCURACY GRAPH
+# =====================================================
+
+plt.figure()
+
+plt.plot(
+    history.history["accuracy"],
+    label="Training Accuracy"
+)
+
+plt.plot(
+    history.history["val_accuracy"],
+    label="Validation Accuracy"
+)
+
+plt.xlabel("Epoch")
+plt.ylabel("Accuracy")
+plt.title("Hull Defect Model Accuracy")
 plt.legend()
-plt.title("Training Accuracy")
-plt.show()
 
-# =========================
-# 📊 Evaluate
-# =========================
-print("\n🔍 Test Evaluation:")
-test_loss, test_acc = model.evaluate(test_ds)
-print(f"Test Accuracy: {test_acc:.2f}")
+plt.savefig(
+    "model/training_accuracy.png"
+)
 
-# =========================
-# 📊 Classification Report
-# =========================
-y_pred = model.predict(test_ds)
-y_pred_classes = np.argmax(y_pred, axis=1)
+plt.close()
+
+# =====================================================
+# TEST EVALUATION
+# =====================================================
+
+print("\n========== TEST EVALUATION ==========\n")
+
+test_loss, test_acc = model.evaluate(
+    test_ds
+)
+
+print(
+    f"Test Accuracy: {test_acc * 100:.2f}%"
+)
+
+# =====================================================
+# CLASSIFICATION REPORT
+# =====================================================
+
+y_pred = model.predict(
+    test_ds
+)
+
+y_pred_classes = np.argmax(
+    y_pred,
+    axis=1
+)
 
 y_true = []
+
 for images, labels in test_ds:
-    y_true.extend(labels.numpy())
+    y_true.extend(
+        labels.numpy()
+    )
 
-print("\nClassification Report:")
-print(classification_report(y_true, y_pred_classes, target_names=class_names))
+print("\n========== CLASSIFICATION REPORT ==========\n")
 
-# =========================
-# 📊 Confusion Matrix
-# =========================
-cm = confusion_matrix(y_true, y_pred_classes)
+print(
+    classification_report(
+        y_true,
+        y_pred_classes,
+        target_names=class_names,
+        digits=4
+    )
+)
 
-sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
-            xticklabels=class_names,
-            yticklabels=class_names)
+# =====================================================
+# CONFUSION MATRIX
+# =====================================================
+
+cm = confusion_matrix(
+    y_true,
+    y_pred_classes
+)
+
+plt.figure(
+    figsize=(8, 6)
+)
+
+sns.heatmap(
+    cm,
+    annot=True,
+    fmt="d",
+    cmap="Blues",
+    xticklabels=class_names,
+    yticklabels=class_names
+)
 
 plt.xlabel("Predicted")
 plt.ylabel("Actual")
-plt.title("Confusion Matrix")
-plt.show()
+plt.title("Hull Defect Confusion Matrix")
+
+plt.tight_layout()
+
+plt.savefig(
+    "model/confusion_matrix.png"
+)
+
+plt.close()
+
+print(
+    "\nTraining and evaluation completed successfully."
+)

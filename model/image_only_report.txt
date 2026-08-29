@@ -1,12 +1,25 @@
---IMAGE-ONLY SEA STATE CLASSIFICATION REPORT
+IMAGE-ONLY SEA STATE CLASSIFICATION REPORT
+==========================================
 
-Dataset Size: 7200
+Dataset split method:
+Original MU-SSiD Train / Validation / Test folders
+No random image-level train_test_split used.
+
 Train Size: 5040
 Validation Size: 1080
 Test Size: 1080
+Total Experimental Images: 7200
 
-Best Validation Accuracy: 99.17%
-Final Test Accuracy: 99.17%
+Image overlap between splits: 0
+
+Best Validation Accuracy: 86.39%
+Final Test Accuracy: 83.89%
+Final Test Loss: 0.5979
+
+Training History:
+Epoch 1: Train Acc=83.51% | Val Acc=86.39% | Train Loss=0.5455 | Val Loss=0.3364
+Epoch 2: Train Acc=96.65% | Val Acc=88.24% | Train Loss=0.1204 | Val Loss=0.3400
+Epoch 3: Train Acc=98.39% | Val Acc=87.87% | Train Loss=0.0602 | Val Loss=0.3446
 
 Label Mapping:
 0 = calm
@@ -17,17 +30,17 @@ Label Mapping:
 Classification Report:
               precision    recall  f1-score   support
 
-        calm       0.99      0.99      0.99       269
-    moderate       0.98      0.99      0.99       272
-       rough       1.00      0.98      0.99       271
-  very_rough       1.00      1.00      1.00       268
+        calm     0.8897    0.9556    0.9214       270
+    moderate     0.6559    0.7556    0.7022       270
+       rough     0.8365    0.6444    0.7280       270
+  very_rough     0.9963    1.0000    0.9982       270
 
-    accuracy                           0.99      1080
-   macro avg       0.99      0.99      0.99      1080
-weighted avg       0.99      0.99      0.99      1080
+    accuracy                         0.8389      1080
+   macro avg     0.8446    0.8389    0.8375      1080
+weighted avg     0.8446    0.8389    0.8375      1080
 
 Confusion Matrix:
-[[267   2   0   0]
- [  1 270   1   0]
- [  1   4 266   0]
- [  0   0   0 268]]                                                            
+[[258  12   0   0]
+ [ 32 204  34   0]
+ [  0  95 174   1]
+ [  0   0   0 270]]

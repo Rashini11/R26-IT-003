@@ -15,6 +15,7 @@ import {
   Ship,
   Square,
 } from "lucide-react";
+import MediaFitToggle from "./components/MediaFitToggle";
 
 /*
  * SINGLE BACKEND CONFIGURATION
@@ -47,6 +48,311 @@ function riskClass(level) {
     level || "unknown"
   ).toLowerCase()}`;
 }
+
+function EnvironmentPanel({ environment }) {
+  const atmospheric =
+    environment?.atmospheric;
+
+  const marine =
+    environment?.marine;
+
+  if (!environment) {
+    return (
+      <section className="sim-panel">
+        <div className="sim-panel-head">
+          <span>
+            ENVIRONMENTAL CONDITIONS
+          </span>
+        </div>
+
+        <div className="sim-waiting">
+          Waiting for environmental data…
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="sim-panel">
+
+      <div className="sim-panel-head">
+        <span>
+          ENVIRONMENTAL CONDITIONS
+        </span>
+
+        <span className="sim-mono">
+          {environment.provider || "—"}
+        </span>
+      </div>
+
+
+      <div className="sim-history-row">
+        <span>
+          Encounter position
+        </span>
+
+        <strong>
+          {fmt(
+            environment.latitude,
+            4
+          )}
+          {", "}
+          {fmt(
+            environment.longitude,
+            4
+          )}
+        </strong>
+      </div>
+
+
+      <div className="sim-panel-head">
+        <span>
+          ATMOSPHERIC
+        </span>
+      </div>
+
+
+      {atmospheric?.available ? (
+
+        <div className="sim-kpi-grid">
+
+          <div>
+            <small>TEMPERATURE</small>
+            <strong>
+              {fmt(
+                atmospheric.temperature_c,
+                1
+              )} °C
+            </strong>
+          </div>
+
+          <div>
+            <small>HUMIDITY</small>
+            <strong>
+              {fmt(
+                atmospheric
+                  .relative_humidity_percent,
+                0
+              )}%
+            </strong>
+          </div>
+
+          <div>
+            <small>WIND</small>
+            <strong>
+              {fmt(
+                atmospheric.wind_speed_knots,
+                2
+              )} kn
+            </strong>
+          </div>
+
+          <div>
+            <small>WIND DIRECTION</small>
+            <strong>
+              {fmt(
+                atmospheric
+                  .wind_direction_degrees,
+                0
+              )}°
+            </strong>
+          </div>
+
+          <div>
+            <small>WIND GUST</small>
+            <strong>
+              {fmt(
+                atmospheric.wind_gust_knots,
+                2
+              )} kn
+            </strong>
+          </div>
+
+          <div>
+            <small>VISIBILITY</small>
+            <strong>
+              {fmt(
+                atmospheric.visibility_km,
+                1
+              )} km
+            </strong>
+          </div>
+
+          <div>
+            <small>PRESSURE</small>
+            <strong>
+              {fmt(
+                atmospheric.pressure_msl_hpa,
+                1
+              )} hPa
+            </strong>
+          </div>
+
+          <div>
+            <small>RAIN</small>
+            <strong>
+              {fmt(
+                atmospheric.rain_mm,
+                2
+              )} mm
+            </strong>
+          </div>
+
+          <div>
+            <small>CLOUD COVER</small>
+            <strong>
+              {fmt(
+                atmospheric.cloud_cover_percent,
+                0
+              )}%
+            </strong>
+          </div>
+
+        </div>
+
+      ) : (
+
+        <div className="sim-waiting">
+          Atmospheric data unavailable.
+        </div>
+
+      )}
+
+
+      <div
+        className="sim-panel-head"
+        style={{
+          marginTop: "18px",
+        }}
+      >
+        <span>
+          MARINE
+        </span>
+      </div>
+
+
+      {marine?.available ? (
+
+        <div className="sim-kpi-grid">
+
+          <div>
+            <small>WAVE HEIGHT</small>
+            <strong>
+              {fmt(
+                marine.wave_height_m,
+                2
+              )} m
+            </strong>
+          </div>
+
+          <div>
+            <small>WAVE DIRECTION</small>
+            <strong>
+              {fmt(
+                marine
+                  .wave_direction_degrees,
+                0
+              )}°
+            </strong>
+          </div>
+
+          <div>
+            <small>WAVE PERIOD</small>
+            <strong>
+              {fmt(
+                marine.wave_period_seconds,
+                1
+              )} s
+            </strong>
+          </div>
+
+          <div>
+            <small>SWELL HEIGHT</small>
+            <strong>
+              {fmt(
+                marine.swell_height_m,
+                2
+              )} m
+            </strong>
+          </div>
+
+          <div>
+            <small>SWELL DIRECTION</small>
+            <strong>
+              {fmt(
+                marine
+                  .swell_direction_degrees,
+                0
+              )}°
+            </strong>
+          </div>
+
+          <div>
+            <small>SWELL PERIOD</small>
+            <strong>
+              {fmt(
+                marine.swell_period_seconds,
+                1
+              )} s
+            </strong>
+          </div>
+
+          <div>
+            <small>SEA TEMPERATURE</small>
+            <strong>
+              {fmt(
+                marine
+                  .sea_surface_temperature_c,
+                1
+              )} °C
+            </strong>
+          </div>
+
+          <div>
+            <small>CURRENT SPEED</small>
+            <strong>
+              {fmt(
+                marine
+                  .ocean_current_speed_knots,
+                2
+              )} kn
+            </strong>
+          </div>
+
+          <div>
+            <small>CURRENT DIRECTION</small>
+            <strong>
+              {fmt(
+                marine
+                  .ocean_current_direction_degrees,
+                0
+              )}°
+            </strong>
+          </div>
+
+        </div>
+
+      ) : (
+
+        <div className="sim-waiting">
+          {marine?.reason ||
+            "Marine data unavailable at this location."}
+        </div>
+
+      )}
+
+
+      <p className="sim-notice">
+        Environmental observations are
+        contextual decision-support data.
+        They are not inputs to RadarTargetCNN
+        or the GRU motion model.
+      </p>
+
+    </section>
+  );
+}
+
 
 function VesselPanel({ label, vessel }) {
   const state = vessel?.current_state;
@@ -174,7 +480,7 @@ function VesselPanel({ label, vessel }) {
   );
 }
 
-export default function LiveSimulation() {
+export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
   const [mode, setMode] =
     useState("constructed");
 
@@ -561,11 +867,16 @@ export default function LiveSimulation() {
             </span>
           </div>
 
+          <div className="sim-media-toolbar">
+            <MediaFitToggle mode={mediaFit} onChange={onMediaFitChange} compact />
+          </div>
+
           <div className="sim-image-stage">
             {imageUrl ? (
               <img
                 src={imageUrl}
                 alt="Current simulated SAR frame"
+                className={`sim-image sim-image--${mediaFit}`}
               />
             ) : (
               <div>
@@ -606,16 +917,17 @@ export default function LiveSimulation() {
               <div className="sim-kpi-grid">
 
                 <div>
-                  <small>YOLO</small>
+                  <small>
+                    BIRD PROBABILITY
+                  </small>
+
                   <strong>
-                    {
-                      sar?.yolo_prediction
-                      || "—"
-                    }
+                    BIRD
                   </strong>
+
                   <em>
                     {fmt(
-                      sar?.yolo_confidence,
+                      sar?.bird_probability,
                       2
                     )}
                     %
@@ -624,19 +936,16 @@ export default function LiveSimulation() {
 
                 <div>
                   <small>
-                    DEEPER CNN
+                    SHIP PROBABILITY
                   </small>
 
                   <strong>
-                    {
-                      sar?.cnn_prediction
-                      || "—"
-                    }
+                    SHIP
                   </strong>
 
                   <em>
                     {fmt(
-                      sar?.cnn_confidence,
+                      sar?.ship_probability,
                       2
                     )}
                     %
@@ -761,6 +1070,10 @@ export default function LiveSimulation() {
 
       </div>
 
+      <EnvironmentPanel
+        environment={latest?.environment}
+      />
+
       <div className="sim-vessel-grid">
 
         <VesselPanel
@@ -778,6 +1091,7 @@ export default function LiveSimulation() {
         />
 
       </div>
+
 
       <section className="sim-panel sim-events">
 
@@ -818,13 +1132,13 @@ export default function LiveSimulation() {
                       + `-${event.frame_number}`
                     }
                   >
-                    <td>
+                    <td data-label="FRAME">
                       {
                         event.frame_number
                       }
                     </td>
 
-                    <td>
+                    <td data-label="SIM TIME">
                       {
                         event
                           .simulated_timestamp
@@ -836,7 +1150,7 @@ export default function LiveSimulation() {
                       }
                     </td>
 
-                    <td>
+                    <td data-label="SAR CLASS">
                       {
                         event.sar
                           ?.classification
@@ -844,7 +1158,7 @@ export default function LiveSimulation() {
                       }
                     </td>
 
-                    <td>
+                    <td data-label="SEPARATION">
                       {fmt(
                         event.encounter
                           ?.current_separation_nautical_miles,
@@ -853,7 +1167,7 @@ export default function LiveSimulation() {
                       NM
                     </td>
 
-                    <td>
+                    <td data-label="DCPA">
                       {fmt(
                         event.encounter
                           ?.dcpa_nautical_miles,
@@ -862,7 +1176,7 @@ export default function LiveSimulation() {
                       NM
                     </td>
 
-                    <td>
+                    <td data-label="TCPA">
                       {fmt(
                         event.encounter
                           ?.tcpa_minutes,
@@ -871,7 +1185,7 @@ export default function LiveSimulation() {
                       min
                     </td>
 
-                    <td>
+                    <td data-label="RISK">
                       <span
                         className={riskClass(
                           event.encounter

@@ -1,0 +1,79 @@
+{
+  "resample_interval": "1min",
+  "history_steps": 10,
+  "history_minutes": 10,
+  "forecast_steps": 5,
+  "forecast_minutes": 5,
+  "feature_names": [
+    "east_position_metres",
+    "north_position_metres",
+    "speed_over_ground_knots",
+    "sin_course",
+    "cos_course",
+    "observed_record_indicator",
+    "course_missing_indicator"
+  ],
+  "feature_mean": [
+    -9.628255844116211,
+    3.653926134109497,
+    2.4828579425811768,
+    -0.16908448934555054,
+    -0.011550772935152054,
+    0.7961772680282593,
+    0.26472005248069763
+  ],
+  "feature_std": [
+    570.6174926757812,
+    585.7361450195312,
+    4.454836368560791,
+    0.6836447715759277,
+    0.7077343463897705,
+    0.40057727694511414,
+    0.43705061078071594
+  ],
+  "class_names": [
+    "Stopped",
+    "Slow",
+    "Moderate",
+    "Fast"
+  ],
+  "class_boundaries_knots": {
+    "Stopped": "0.0 to 2.0",
+    "Slow": "2.1 to 6.0",
+    "Moderate": "6.1 to 12.0",
+    "Fast": "above 12.0"
+  },
+  "split_method": "70/15/15 unique MMSI split stratified by maximum vessel activity class",
+  "splits": {
+    "train": {
+      "samples": 377084,
+      "unique_vessels": 3494,
+      "class_distribution": {
+        "Stopped": 266190,
+        "Slow": 41848,
+        "Moderate": 49909,
+        "Fast": 19137
+      }
+    },
+    "val": {
+      "samples": 81670,
+      "unique_vessels": 750,
+      "class_distribution": {
+        "Stopped": 55954,
+        "Slow": 10126,
+        "Moderate": 12009,
+        "Fast": 3581
+      }
+    },
+    "test": {
+      "samples": 81184,
+      "unique_vessels": 768,
+      "class_distribution": {
+        "Stopped": 57930,
+        "Slow": 8271,
+        "Moderate": 11418,
+        "Fast": 3565
+      }
+    }
+  }
+}
