@@ -105,7 +105,7 @@ const MODULES = {
   },
   boat: {
     id: "boat",
-    label: "Boat Detection",
+    label: "Vessel Detection",
     title: "Vessel Detection",
     endpoint: `${API_BASE_URL}/predict-boat-detection`,
     description: "YOLO-based real-time object detection for maritime vessel identification.",
@@ -2715,7 +2715,6 @@ const generateSeaStatePDF = () => {
                       : item.vessel_origin || item.results?.find((detection) => detection.detection_type !== "flag")?.label || "Unknown"}</strong>
                     <p>{item.filename}</p>
                     <p>{item.status} · {item.count || 0} detected · {item.frame_count ? `${item.frame_count} frames` : "single image"}</p>
-                    <p>{item.confidence ? `${item.confidence}% confidence` : item.results?.map((detection) => detection.label).filter(Boolean).join(", ") || "No vessel details"}</p>
                     <p>{item.estimated_size || "Size unavailable"} · {item.source || "Unknown source"}</p>
                   </div>
                 ))}
