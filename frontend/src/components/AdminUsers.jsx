@@ -93,7 +93,7 @@ export default function AdminUsers({ onClose }) {
                 const isAdmin = user.role === "admin";
                 return (
                   <tr key={user.id}>
-                    <td>
+                    <td data-label="PROFILE">
                       <div className="access-profile">
                         <UserRoundCog size={15} />
                         <div>
@@ -102,10 +102,10 @@ export default function AdminUsers({ onClose }) {
                         </div>
                       </div>
                     </td>
-                    <td><span className={`access-pill access-pill--${user.approval_status || "approved"}`}>{String(user.approval_status || "approved").toUpperCase()}</span></td>
-                    <td><span className="access-level">{accessLabel(user)}</span></td>
-                    <td>{user.is_active ? <span className="access-active"><CheckCircle2 size={12} /> ACTIVE</span> : <span className="access-disabled"><XCircle size={12} /> DISABLED</span>}</td>
-                    <td>
+                    <td data-label="STATUS"><span className={`access-pill access-pill--${user.approval_status || "approved"}`}>{String(user.approval_status || "approved").toUpperCase()}</span></td>
+                    <td data-label="ACCESS"><span className="access-level">{accessLabel(user)}</span></td>
+                    <td data-label="ACCOUNT">{user.is_active ? <span className="access-active"><CheckCircle2 size={12} /> ACTIVE</span> : <span className="access-disabled"><XCircle size={12} /> DISABLED</span>}</td>
+                    <td data-label="ACTIONS">
                       {isAdmin ? (
                         <span className="access-admin-lock">ADMIN ACCOUNT</span>
                       ) : (

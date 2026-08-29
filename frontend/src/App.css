@@ -709,6 +709,62 @@ p { margin: 0; }
   display: block;
 }
 
+.boat-detection-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.boat-analysis-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  border: 1px solid;
+  background: var(--border);
+}
+
+.boat-analysis-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: rgba(5, 16, 24, 0.82);
+}
+
+.boat-analysis-summary span {
+  color: var(--text-400);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.boat-analysis-summary strong {
+  color: var(--text-100);
+  font-size: 22px;
+}
+
+.boat-download-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border-bright);
+  color: var(--text-100);
+  background: rgba(167, 139, 250, 0.12);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.boat-download-btn:hover {
+  background: rgba(167, 139, 250, 0.24);
+}
+
 /* Empty placeholder inside preview area */
 .preview-placeholder {
   display: flex;
@@ -859,6 +915,13 @@ p { margin: 0; }
   display: flex;
   align-items: center;
   gap: 14px;
+}
+
+.boat-result-details {
+  padding: 8px 14px;
+  border: 1px solid;
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 /* Prediction text block */
@@ -1396,6 +1459,10 @@ p { margin: 0; }
   border-radius: var(--r-sm);
   background: rgba(5, 20, 33, .72);
 }
+.sea-history-section {
+  margin-top: 50px;
+  padding: 20px 22px 22px;
+}
 .sea-feature-title {
   margin: 0 0 10px;
   color: var(--success);
@@ -1503,8 +1570,8 @@ p { margin: 0; }
 .sea-history-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 8px;
-  margin-top: 10px;
+  gap: 10px;
+  margin-top: 16px;
 }
 .sea-history-card {
   padding: 10px;
@@ -1515,11 +1582,81 @@ p { margin: 0; }
 .sea-history-card strong { display: block; margin-top: 4px; color: var(--success); text-transform: uppercase; }
 .sea-history-card p { margin-top: 4px; }
 
+.vessel-history-panel {
+  min-height: 0;
+  margin: 14px 24px 18px;
+  padding: 18px 22px 20px;
+  gap: 12px;
+  border-color: rgba(0, 212, 255, .22);
+  background: rgba(5, 20, 33, .88);
+}
+.vessel-history-panel .sea-history-header {
+  padding-bottom: 4px;
+}
+.vessel-history-panel .sea-feature-title {
+  margin-bottom: 0;
+}
+.vessel-history-panel .sea-history-grid {
+  margin-top: 8px;
+}
+
 @media (max-width: 720px) {
   .sea-risk-topline,
   .sea-suitability-head,
   .sea-history-header,
   .sea-recommendation-row { align-items: flex-start; flex-direction: column; }
+}
+
+@media (max-width: 768px) {
+  .vessel-history-panel {
+    margin: 12px 14px 16px;
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .vessel-history-panel {
+    margin: 10px 10px 14px;
+    padding: 14px 12px 16px;
+  }
+}
+
+.boat-summary-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 20px 22px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.24), rgba(45, 212, 191, 0.18));
+  border: 1px solid var(--border);
+}
+
+.boat-summary-card h3 {
+  margin: 6px 0 0;
+  font-size: 24px;
+}
+
+.confidence-badge {
+  padding: 12px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-weight: 900;
+  color: white;
+}
+
+.demo-button {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.mini-card {
+  padding: 20px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--border);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1763,4 +1900,904 @@ p { margin: 0; }
   .admin-access-btn { font-size: 0; width: 30px; justify-content: center; }
   .access-modal-backdrop { padding: 10px; }
   .access-modal { width: 100%; max-height: 94vh; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   OCEANIQ UI/UX REFINEMENT — responsive workspace + themes
+   These overrides intentionally sit last so the redesign can
+   modernize the existing application without touching API logic.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Shared interactive controls */
+.theme-toggle,
+.logout-btn,
+.change-image-btn,
+.mobile-change-btn,
+.mobile-run-btn,
+.media-fit-toggle button {
+  min-height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border-hi);
+  background: var(--bg-panel-hi);
+  color: var(--text-200);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  transition: border-color .18s ease, background .18s ease, color .18s ease, transform .18s ease;
+}
+
+.theme-toggle:hover,
+.logout-btn:hover:not(:disabled),
+.change-image-btn:hover,
+.media-fit-toggle button:hover {
+  border-color: var(--border-glow);
+  color: var(--text-100);
+  transform: translateY(-1px);
+}
+
+.theme-toggle {
+  padding: 0 10px;
+  white-space: nowrap;
+}
+.theme-toggle--compact {
+  width: 34px;
+  padding: 0;
+  flex: 0 0 34px;
+}
+
+.logout-btn {
+  min-height: 28px;
+  height: 28px;
+  padding: 0 9px;
+  border-color: rgba(0, 212, 255, .24);
+  background: rgba(0, 212, 255, .06);
+  color: var(--cyan);
+}
+.logout-btn:disabled { opacity: .55; cursor: wait; }
+
+.media-fit-toggle {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-surface);
+}
+.media-fit-toggle button {
+  min-height: 28px;
+  padding: 0 9px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-300);
+}
+.media-fit-toggle button.active {
+  color: var(--cyan);
+  border-color: var(--cyan-mid);
+  background: var(--cyan-dim);
+}
+.media-fit-toggle--compact button {
+  width: 30px;
+  padding: 0;
+}
+
+/* Use all available browser width; the old Vite root width cap is removed in index.css. */
+.app-shell {
+  width: 100%;
+  min-height: 100dvh;
+}
+
+.main-area {
+  min-width: 0;
+  min-height: 100dvh;
+  padding-bottom: 28px;
+}
+
+.command-bar {
+  min-height: 62px;
+  padding: 11px clamp(14px, 2vw, 28px);
+  gap: 12px;
+}
+
+.cb-badges {
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.desc-strip {
+  margin: 14px clamp(14px, 2vw, 28px) 0;
+  padding: 10px 14px;
+}
+
+/* Desktop analysis workspace: left controls remain reachable while long results scroll. */
+.analysis-grid {
+  grid-template-columns: minmax(230px, .72fr) minmax(330px, 1fr) minmax(390px, 1.18fr);
+  grid-template-rows: auto;
+  align-items: start;
+  gap: clamp(12px, 1.25vw, 18px);
+  padding: 14px clamp(14px, 2vw, 28px) 0;
+  flex: initial;
+}
+
+.a-card {
+  min-height: 0;
+  padding: 14px;
+  gap: 12px;
+}
+
+.upload-card,
+.preview-card {
+  align-self: start;
+  position: sticky;
+  top: 76px;
+}
+
+.upload-card {
+  max-height: calc(100dvh - 92px);
+}
+
+.drop-zone {
+  flex: 0 0 auto;
+  min-height: clamp(210px, 32vh, 330px);
+}
+.drop-zone.dz--filled {
+  min-height: 150px;
+}
+
+.preview-card {
+  height: min(690px, calc(100dvh - 92px));
+}
+
+.preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+}
+
+.change-image-btn {
+  padding: 0 10px;
+  color: var(--cyan);
+  background: var(--cyan-dim);
+  border-color: var(--cyan-mid);
+  white-space: nowrap;
+}
+
+.preview-area {
+  min-height: 0;
+  height: 100%;
+  flex: 1 1 auto;
+  background: var(--media-stage-bg, #01070c);
+}
+.preview-img-wrap { min-height: 0; }
+.preview-img {
+  transition: object-fit .18s ease, transform .18s ease;
+}
+.preview-img--fit { object-fit: contain; }
+.preview-img--fill { object-fit: cover; }
+
+.results-card {
+  min-height: 520px;
+  align-self: start;
+}
+
+.result-section,
+.result-body {
+  min-width: 0;
+}
+
+/* Dense result cards: preserve hierarchy without wasting vertical space. */
+.result-primary-row { align-items: stretch; }
+.result-pred-block { padding: 14px; }
+.data-row { padding: 8px 0; }
+.sea-feature-card,
+.sea-risk-card,
+.sea-history-section { padding: 12px; }
+.sea-history-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+/* Live simulation uses the same media framing control as uploaded imagery. */
+.sim-media-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: -4px 0 8px;
+}
+.sim-image-stage {
+  min-height: clamp(250px, 38vh, 420px);
+}
+.sim-image-stage .sim-image {
+  width: 100%;
+  height: clamp(250px, 38vh, 420px);
+  display: block;
+}
+.sim-image-stage .sim-image--fit { object-fit: contain; }
+.sim-image-stage .sim-image--fill { object-fit: cover; }
+
+/* Mobile-only action dock is hidden on larger screens. */
+.mobile-action-dock { display: none; }
+
+/* Keyboard / accessibility treatment */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+.drop-zone:focus-within {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  .radar-canvas { display: none; }
+}
+
+/* Large tablet / small laptop: two-column workspace, full-width results. */
+@media (max-width: 1180px) {
+  :root { --sidebar-w: 210px; }
+  .analysis-grid {
+    grid-template-columns: minmax(260px, .8fr) minmax(0, 1.2fr);
+    grid-template-rows: auto auto;
+  }
+  .upload-card {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .preview-card {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .results-card {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .upload-card,
+  .preview-card {
+    position: static;
+    max-height: none;
+  }
+  .preview-card { height: 520px; }
+}
+
+/* Phone/tablet experience: true single-column app, drawer navigation and persistent actions. */
+@media (max-width: 768px) {
+  :root { --sidebar-w: min(86vw, 310px); }
+
+  .main-area {
+    margin-left: 0;
+    padding-bottom: 92px;
+  }
+
+  .sidebar {
+    width: var(--sidebar-w);
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+
+  .command-bar {
+    min-height: 58px;
+    padding: 9px 12px;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .cb-module-row {
+    min-width: min(250px, calc(100vw - 64px));
+  }
+  .cb-title { font-size: 14px; }
+  .cb-tag { font-size: 8px; }
+  .cb-badges {
+    width: 100%;
+    justify-content: flex-start;
+    padding-left: 38px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .cb-badges::-webkit-scrollbar { display: none; }
+
+  .desc-strip {
+    margin: 10px 12px 0;
+    font-size: 11px;
+  }
+
+  .analysis-grid {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 10px 12px 0;
+    gap: 10px;
+  }
+  .upload-card,
+  .preview-card,
+  .results-card {
+    grid-column: 1;
+    grid-row: auto;
+    position: static;
+    height: auto;
+    max-height: none;
+    min-height: 0;
+  }
+
+  .drop-zone { min-height: 170px; }
+  .drop-zone.dz--filled { min-height: 120px; }
+  .preview-card { min-height: 390px; }
+  .preview-area { min-height: 300px; }
+
+  .preview-toolbar {
+    align-items: stretch;
+  }
+  .preview-toolbar .media-fit-toggle { flex: 1; }
+  .preview-toolbar .media-fit-toggle button { flex: 1; }
+
+  .results-card { min-height: 300px; }
+  .result-primary-row { flex-direction: row; align-items: stretch; }
+  .conf-ring-wrap { align-self: center; }
+  .data-row { flex-direction: row; }
+  .data-value { text-align: right; }
+
+  .mobile-action-dock {
+    display: grid;
+    grid-template-columns: minmax(105px, .38fr) minmax(0, 1fr);
+    gap: 8px;
+    position: fixed;
+    z-index: 90;
+    left: 10px;
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    padding: 8px;
+    border: 1px solid var(--border-hi);
+    border-radius: 14px;
+    background: var(--dock-bg, rgba(4, 15, 26, .92));
+    backdrop-filter: blur(18px);
+    box-shadow: 0 18px 50px rgba(0,0,0,.28);
+  }
+  .mobile-change-btn,
+  .mobile-run-btn { min-height: 44px; }
+  .mobile-run-btn {
+    border-color: color-mix(in srgb, var(--mc, var(--cyan)) 45%, transparent);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--mc, var(--cyan)) 22%, transparent), rgba(0,255,179,.10));
+    color: var(--text-100);
+  }
+  .mobile-run-btn:disabled { opacity: .5; cursor: wait; }
+
+  .simulation-page { padding: 12px; }
+  .sim-control-bar { align-items: stretch; }
+  .sim-control-bar label { flex: 1 1 150px; }
+  .sim-control-bar select { min-width: 0; width: 100%; }
+  .sim-button { min-height: 42px; }
+  .sim-image-stage,
+  .sim-image-stage .sim-image { height: 300px; min-height: 300px; }
+
+  .main-footer { display: none; }
+}
+
+@media (max-width: 520px) {
+  .a-card { padding: 11px; }
+  .a-card-header { padding-bottom: 9px; }
+  .a-card-tag { display: none; }
+  .preview-card { min-height: 350px; }
+  .preview-area { min-height: 260px; }
+  .change-image-btn { font-size: 0; width: 36px; padding: 0; }
+  .change-image-btn svg { margin: 0; }
+  .badge-live { display: none; }
+  .badge-access { font-size: 0; width: 30px; justify-content: center; padding: 0; }
+  .logout-btn { width: 30px; padding: 0; }
+  .logout-btn span { display: none; }
+  .result-primary-row { flex-direction: column; }
+  .conf-ring-wrap { align-self: center; }
+  .data-row { flex-direction: column; gap: 3px; }
+  .data-value { text-align: left; }
+  .radar-model-row { grid-template-columns: 1fr; }
+  .sea-history-grid { grid-template-columns: 1fr; }
+  .sim-image-stage,
+  .sim-image-stage .sim-image { height: 250px; min-height: 250px; }
+}
+
+/* ── Light theme ─────────────────────────────────────────── */
+html[data-theme="light"] {
+  --bg-void: #eaf2f5;
+  --bg-surface: #f5fafc;
+  --bg-panel: #ffffff;
+  --bg-panel-hi: #f0f7f9;
+  --bg-glass: rgba(248, 252, 253, .90);
+  --border: rgba(16, 75, 98, .10);
+  --border-hi: rgba(16, 75, 98, .20);
+  --border-glow: rgba(0, 126, 168, .35);
+  --text-100: #102a38;
+  --text-200: #3f6477;
+  --text-300: #6e8c9b;
+  --text-400: #9db0b9;
+  --cyan: #007fa5;
+  --cyan-dim: rgba(0, 127, 165, .09);
+  --cyan-mid: rgba(0, 127, 165, .26);
+  --success: #008f6a;
+  --warn: #c86412;
+  --danger: #cf3f59;
+  --media-stage-bg: #e2ebef;
+  --dock-bg: rgba(255,255,255,.94);
+}
+
+html[data-theme="light"] body {
+  background: var(--bg-void);
+  color: var(--text-100);
+}
+html[data-theme="light"] .radar-canvas { opacity: .14; }
+html[data-theme="light"] .sidebar {
+  background: var(--bg-glass);
+  box-shadow: inset -1px 0 0 rgba(0,127,165,.04), 8px 0 34px rgba(42,74,89,.08);
+}
+html[data-theme="light"] .command-bar {
+  background: rgba(255,255,255,.90);
+  box-shadow: 0 4px 20px rgba(27,65,82,.05);
+}
+html[data-theme="light"] .desc-strip,
+html[data-theme="light"] .sim-control-bar,
+html[data-theme="light"] .sim-status-strip,
+html[data-theme="light"] .sim-panel,
+html[data-theme="light"] .sim-radar-card {
+  background: rgba(255,255,255,.78);
+}
+html[data-theme="light"] .a-card {
+  box-shadow: 0 10px 30px rgba(33,72,90,.08), inset 0 1px 0 rgba(255,255,255,.9);
+}
+html[data-theme="light"] .a-card:hover {
+  box-shadow: 0 14px 36px rgba(33,72,90,.11), inset 0 1px 0 rgba(255,255,255,1);
+}
+html[data-theme="light"] .drop-zone {
+  background: rgba(0,127,165,.035);
+  border-color: rgba(0,127,165,.24);
+}
+html[data-theme="light"] .result-pred-block,
+html[data-theme="light"] .radar-model-card,
+html[data-theme="light"] .boat-result-details,
+html[data-theme="light"] .vessel-item,
+html[data-theme="light"] .gradcam-img-wrap {
+  background: rgba(27,79,99,.035);
+}
+html[data-theme="light"] .prob-bar-track { background: rgba(16,75,98,.09); }
+html[data-theme="light"] .sea-history-card { background: rgba(16,75,98,.035); }
+html[data-theme="light"] .sea-warning-line { color: #9a4f17; }
+html[data-theme="light"] .sim-control-bar select {
+  background: #fff;
+  color: var(--text-100);
+}
+html[data-theme="light"] .sim-image-stage { background: #e2ebef; }
+html[data-theme="light"] .access-modal { background: #fff; box-shadow: 0 30px 80px rgba(30,64,80,.18); }
+html[data-theme="light"] .access-table th { background: #f5fafc; }
+html[data-theme="light"] .access-modal-backdrop { background: rgba(23,48,60,.48); }
+html[data-theme="light"] .sidebar-overlay { background: rgba(20,40,50,.36); }
+
+.results-card { scroll-margin-top: 78px; }
+
+:root { --border-bright: var(--border-hi); }
+
+html[data-theme="light"] .boat-analysis-summary > div,
+html[data-theme="light"] .sim-kpi-grid > div {
+  background: rgba(16,75,98,.035);
+}
+html[data-theme="light"] .sim-history-track,
+html[data-theme="light"] .sim-offline,
+html[data-theme="light"] .sim-risk--unknown {
+  background: rgba(16,75,98,.07);
+}
+
+.sea-history-details > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+.sea-history-details > summary::-webkit-details-marker { display: none; }
+.sea-history-count {
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+.sea-history-details[open] > summary {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.sea-history-details[open] .sea-history-count::after { content: " ↑"; }
+.sea-history-header--controls { margin-top: 10px; }
+
+@media (max-width: 520px) {
+  .sea-history-details > summary { align-items: flex-start; flex-direction: column; }
+}
+
+/* Mobile data layouts: dense desktop tables become readable operational cards. */
+@media (max-width: 760px) {
+  .access-table-wrap { padding: 10px; overflow: visible; }
+  .access-table { min-width: 0; }
+  .access-table thead { display: none; }
+  .access-table,
+  .access-table tbody,
+  .access-table tr,
+  .access-table td {
+    display: block;
+    width: 100%;
+  }
+  .access-table tr {
+    margin-bottom: 10px;
+    padding: 4px 10px;
+    border: 1px solid var(--border-hi);
+    border-radius: 11px;
+    background: var(--bg-panel);
+  }
+  .access-table td {
+    display: grid;
+    grid-template-columns: 82px minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .access-table td:last-child { border-bottom: 0; }
+  .access-table td::before {
+    content: attr(data-label);
+    color: var(--text-400);
+    font-family: var(--font-mono);
+    font-size: 7.5px;
+    letter-spacing: .09em;
+    padding-top: 3px;
+  }
+  .access-actions { justify-content: flex-start; }
+  .access-actions button { min-height: 30px; }
+
+  .sim-events table { min-width: 0; }
+  .sim-events thead { display: none; }
+  .sim-events table,
+  .sim-events tbody,
+  .sim-events tr,
+  .sim-events td {
+    display: block;
+    width: 100%;
+  }
+  .sim-events tr {
+    margin-bottom: 9px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: rgba(255,255,255,.018);
+  }
+  .sim-events td {
+    display: grid;
+    grid-template-columns: 86px minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .sim-events td:last-child { border-bottom: 0; }
+  .sim-events td::before {
+    content: attr(data-label);
+    color: var(--text-400);
+    font-size: 7.5px;
+    letter-spacing: .08em;
+  }
+  .sim-table-wrap { overflow: visible; }
+}
+
+/* ============================================================
+   OCEANIQ DESKTOP WORKSPACE V2
+   Removes dead space and keeps operational controls reachable.
+   Applies to Hull / Sea State / Boat Detection / Radar.
+   ============================================================ */
+
+@media (min-width: 1181px) {
+
+  /*
+   * Desktop becomes a true two-zone operational workspace:
+   *
+   * LEFT  = Input + Preview
+   * RIGHT = Intelligence Report
+   */
+  .analysis-grid {
+    grid-template-columns:
+      minmax(460px, 0.96fr)
+      minmax(500px, 1.04fr);
+
+    grid-template-rows: auto auto;
+
+    align-items: start;
+
+    gap: 14px 18px;
+
+    padding:
+      14px
+      clamp(16px, 1.8vw, 28px)
+      0;
+  }
+
+  /* ─────────────────────────────────────────────────────────
+     INPUT
+     ───────────────────────────────────────────────────────── */
+
+  .upload-card {
+    grid-column: 1;
+    grid-row: 1;
+
+    position: relative;
+    top: auto;
+
+    max-height: none;
+
+    align-self: start;
+  }
+
+  /*
+   * Once a file is selected we no longer need a giant drop box.
+   * Turn it into a compact file control.
+   */
+  .drop-zone.dz--filled {
+    min-height: 76px;
+  }
+
+  .dz-loaded {
+    min-height: 74px;
+
+    flex-direction: row;
+
+    justify-content: flex-start;
+    align-items: center;
+
+    text-align: left;
+
+    gap: 10px;
+
+    padding: 10px 12px;
+  }
+
+  .dz-loaded > svg {
+    flex: 0 0 auto;
+  }
+
+  .dz-loaded .dz-fname {
+    flex: 1;
+
+    min-width: 0;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    overflow-wrap: normal;
+  }
+
+  .dz-loaded .dz-change {
+    flex: 0 0 auto;
+
+    margin-left: auto;
+
+    white-space: nowrap;
+  }
+
+  /* ─────────────────────────────────────────────────────────
+     PREVIEW
+     ───────────────────────────────────────────────────────── */
+
+  .preview-card {
+    grid-column: 1;
+    grid-row: 2;
+
+    position: sticky;
+
+    top: 76px;
+
+    width: 100%;
+
+    height:
+      min(
+        560px,
+        calc(100dvh - 330px)
+      );
+
+    min-height: 430px;
+
+    align-self: start;
+  }
+
+  .preview-area {
+    flex: 1 1 auto;
+
+    min-height: 0;
+
+    height: 100%;
+  }
+
+  .preview-img-wrap {
+    height: 100%;
+
+    min-height: 0;
+  }
+
+  /* ─────────────────────────────────────────────────────────
+     INTELLIGENCE REPORT
+     ───────────────────────────────────────────────────────── */
+
+  .results-card {
+    grid-column: 2;
+
+    grid-row: 1 / span 2;
+
+    position: sticky;
+
+    top: 76px;
+
+    align-self: start;
+
+    width: 100%;
+
+    min-height: 540px;
+
+    max-height:
+      calc(100dvh - 92px);
+
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    overscroll-behavior: contain;
+
+    scrollbar-width: thin;
+    scrollbar-color:
+      var(--border-hi)
+      transparent;
+  }
+
+  .results-card::-webkit-scrollbar {
+    width: 7px;
+  }
+
+  .results-card::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .results-card::-webkit-scrollbar-thumb {
+    background: var(--border-hi);
+    border-radius: 999px;
+  }
+
+  .results-card::-webkit-scrollbar-thumb:hover {
+    background: var(--text-400);
+  }
+
+}
+
+
+/* Slightly larger workstation displays */
+@media (min-width: 1500px) {
+
+  .analysis-grid {
+    grid-template-columns:
+      minmax(540px, 0.98fr)
+      minmax(580px, 1.02fr);
+  }
+
+  .preview-card {
+    height:
+      min(
+        620px,
+        calc(100dvh - 315px)
+      );
+  }
+
+}
+
+
+/* Ultra-wide internal-monitor layouts */
+@media (min-width: 1900px) {
+
+  .analysis-grid {
+    grid-template-columns:
+      minmax(620px, 1fr)
+      minmax(660px, 1fr);
+
+    gap: 18px 22px;
+  }
+
+}
+
+
+/* ==========================================================
+   DATABASE / REPORT ACTIONS
+   ========================================================== */
+
+.sidebar-report-action {
+  padding: 12px 14px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border, rgba(148, 163, 184, 0.18));
+}
+
+.shell-action-button {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.08);
+  color: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.shell-action-button:hover {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.8);
+}
+
+.shell-action-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.database-viewer {
+  width: 100%;
+  padding-bottom: 40px;
+}
+
+/* ==========================================================
+   MODULE-SPECIFIC PDF REPORT BUTTON
+   ========================================================== */
+
+.module-report-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+
+  min-height: 34px;
+  padding: 0 13px;
+
+  border: 1px solid rgba(0, 212, 255, 0.42);
+  border-radius: 7px;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(0, 212, 255, 0.10),
+      rgba(0, 255, 179, 0.07)
+    );
+
+  color: var(--text-primary, #dceef7);
+
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+
+  cursor: pointer;
+
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.module-report-btn:hover {
+  border-color: rgba(0, 212, 255, 0.9);
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(0, 212, 255, 0.18),
+      rgba(0, 255, 179, 0.12)
+    );
+
+  transform: translateY(-1px);
+}
+
+.module-report-btn:active {
+  transform: translateY(0);
 }

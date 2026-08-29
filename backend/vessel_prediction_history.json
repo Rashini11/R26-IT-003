@@ -1,0 +1,112 @@
+[
+  {
+    "module": "vessel",
+    "mode": "image",
+    "timestamp": "2026-08-28 22:00:07",
+    "filename": "Screenshot 2026-08-22 161502.png",
+    "status": "Detected",
+    "count": 1,
+    "results": [
+      {
+        "label": "Foreign Ship",
+        "confidence": 76.0,
+        "sl_flag_detected": false,
+        "box": [
+          97.15872955322266,
+          38.090911865234375,
+          543.8739013671875,
+          314.5367736816406
+        ],
+        "detection_type": "ship"
+      }
+    ]
+  },
+  {
+    "module": "vessel",
+    "mode": "image",
+    "timestamp": "2026-08-28 22:00:31",
+    "filename": "boat-analysis-1787730650364.png",
+    "status": "Detected",
+    "count": 1,
+    "results": [
+      {
+        "label": "Foreign Ship",
+        "confidence": 89.9,
+        "sl_flag_detected": false,
+        "box": [
+          0.24436035752296448,
+          28.368091583251953,
+          252.68942260742188,
+          184.02392578125
+        ],
+        "detection_type": "ship"
+      }
+    ]
+  },
+  {
+    "module": "vessel",
+    "mode": "image",
+    "timestamp": "2026-08-28 22:12:22",
+    "filename": "boat-analysis-1787934057893.png",
+    "status": "Detected",
+    "count": 1,
+    "results": [
+      {
+        "label": "Foreign Ship",
+        "confidence": 68.9,
+        "sl_flag_detected": false,
+        "box": [
+          99.22489166259766,
+          41.448551177978516,
+          540.4721069335938,
+          314.3839416503906
+        ],
+        "detection_type": "ship"
+      }
+    ]
+  },
+  {
+    "module": "vessel",
+    "mode": "image",
+    "timestamp": "2026-08-28 22:12:32",
+    "filename": "boat-analysis-1787730650364.png",
+    "status": "Detected",
+    "count": 1,
+    "results": [
+      {
+        "label": "Foreign Ship",
+        "confidence": 89.9,
+        "sl_flag_detected": false,
+        "box": [
+          0.24436035752296448,
+          28.368091583251953,
+          252.68942260742188,
+          184.02392578125
+        ],
+        "detection_type": "ship"
+      }
+    ]
+  },
+  {
+    "module": "vessel",
+    "mode": "image",
+    "timestamp": "2026-08-28 22:12:41",
+    "filename": "boat-analysis-1787934057893.png",
+    "status": "Detected",
+    "count": 1,
+    "results": [
+      {
+        "label": "Foreign Ship",
+        "confidence": 68.9,
+        "sl_flag_detected": false,
+        "box": [
+          99.22489166259766,
+          41.448551177978516,
+          540.4721069335938,
+          314.3839416503906
+        ],
+        "detection_type": "ship"
+      }
+    ]
+  }
+]
