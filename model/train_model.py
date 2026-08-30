@@ -1,441 +1,316 @@
 import tensorflow as tf
-from tensorflow.keras import layers
-import matplotlib.pyplot as plt
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.utils.class_weight import compute_class_weight
 import numpy as np
-import seaborn as sns
-from pathlib import Path
-import json
+import cv2
+import glob
 import os
 
-# =====================================================
-# DATASET PATHS
-# =====================================================
 
-train_dir = "data/processed/images/train"
-val_dir = "data/processed/images/val"
-test_dir = "data/processed/images/test"
+# ============================================================
+# CONFIGURATION
+# ============================================================
 
-# =====================================================
-# LOAD DATASETS
-# =====================================================
+MODEL_PATH = "model/hull_validator.keras"
 
-train_ds = tf.keras.utils.image_dataset_from_directory(
-    train_dir,
-    image_size=(224, 224),
-    batch_size=16,
-    shuffle=True,
-    seed=42
-)
+TEST_ROOT = "data/processed/images/test"
 
-val_ds = tf.keras.utils.image_dataset_from_directory(
-    val_dir,
-    image_size=(224, 224),
-    batch_size=32,
-    shuffle=False
-)
-
-test_ds = tf.keras.utils.image_dataset_from_directory(
-    test_dir,
-    image_size=(224, 224),
-    batch_size=32,
-    shuffle=False
-)
-
-# =====================================================
-# CHECK CLASS ORDER
-# =====================================================
-
-print("\n========== HULL DATASET ==========")
-
-print("TRAIN CLASSES:", train_ds.class_names)
-print("VAL CLASSES:", val_ds.class_names)
-print("TEST CLASSES:", test_ds.class_names)
-
-class_names = train_ds.class_names
-
-expected_classes = [
-    "biofouling",
-    "corrosion",
-    "cracks",
-    "non_hull",
-    "paint_damage",
+THRESHOLDS = [
+    0.50,
+    0.60,
+    0.65,
+    0.70,
+    0.75,
+    0.80,
+    0.85,
+    0.90,
 ]
 
-if class_names != expected_classes:
-    raise ValueError(
-        f"Unexpected class order: {class_names}\n"
-        f"Expected: {expected_classes}"
+
+# ============================================================
+# LOAD MODEL
+# ============================================================
+
+print("\n==============================================")
+print("HULL / NON-HULL VALIDATOR TEST")
+print("==============================================\n")
+
+print("Loading validator model...")
+
+model = tf.keras.models.load_model(
+    MODEL_PATH,
+    compile=False,
+)
+
+print("Validator loaded successfully.\n")
+
+
+# ============================================================
+# TEST DATA
+# ============================================================
+
+folders = [
+    ("hull", "biofouling"),
+    ("hull", "corrosion"),
+    ("hull", "cracks"),
+    ("hull", "paint_damage"),
+    ("non_hull", "non_hull"),
+]
+
+
+results = []
+
+
+# ============================================================
+# RUN PREDICTIONS
+# ============================================================
+
+for expected_label, folder in folders:
+
+    folder_path = os.path.join(
+        TEST_ROOT,
+        folder,
     )
 
-if val_ds.class_names != expected_classes:
-    raise ValueError(
-        f"Unexpected validation class order: {val_ds.class_names}"
-    )
-
-if test_ds.class_names != expected_classes:
-    raise ValueError(
-        f"Unexpected test class order: {test_ds.class_names}"
-    )
-
-# =====================================================
-# DATASET DISTRIBUTION
-# =====================================================
-
-print("\n========== DATASET DISTRIBUTION ==========")
-
-for class_name in class_names:
-
-    train_count = len(
-        tf.io.gfile.glob(
-            f"{train_dir}/{class_name}/*"
-        )
-    )
-
-    val_count = len(
-        tf.io.gfile.glob(
-            f"{val_dir}/{class_name}/*"
-        )
-    )
-
-    test_count = len(
-        tf.io.gfile.glob(
-            f"{test_dir}/{class_name}/*"
+    files = glob.glob(
+        os.path.join(
+            folder_path,
+            "*",
         )
     )
 
     print(
-        f"{class_name}: "
-        f"train={train_count}, "
-        f"val={val_count}, "
-        f"test={test_count}"
+        f"Testing {folder}: {len(files)} images"
     )
 
-print("==========================================\n")
+    for file_path in files:
 
-# =====================================================
-# MOBILE NET V2 PREPROCESSING
-# MobileNetV2 expects pixel values in [-1, 1]
-# =====================================================
+        image = cv2.imread(file_path)
 
-preprocess_input = tf.keras.applications.mobilenet_v2.preprocess_input
+        if image is None:
+            print(
+                "WARNING: Could not read:",
+                file_path,
+            )
+            continue
 
-def preprocess_dataset(images, labels):
-    images = tf.cast(images, tf.float32)
-    images = preprocess_input(images)
-    return images, labels
+        image = cv2.cvtColor(
+            image,
+            cv2.COLOR_BGR2RGB,
+        )
 
-train_ds = train_ds.map(
-    preprocess_dataset,
-    num_parallel_calls=tf.data.AUTOTUNE
+        image = cv2.resize(
+            image,
+            (224, 224),
+        )
+
+        image = image.astype(
+            np.float32
+        )
+
+        image_array = np.expand_dims(
+            image,
+            axis=0,
+        )
+
+        prediction = model.predict(
+            image_array,
+            verbose=0,
+        )[0][0]
+
+        non_hull_probability = float(
+            prediction
+        )
+
+        results.append(
+            {
+                "expected": expected_label,
+                "file": file_path,
+                "probability": non_hull_probability,
+            }
+        )
+
+
+# ============================================================
+# DATASET SUMMARY
+# ============================================================
+
+total = len(results)
+
+hull_count = sum(
+    1
+    for r in results
+    if r["expected"] == "hull"
 )
 
-val_ds = val_ds.map(
-    preprocess_dataset,
-    num_parallel_calls=tf.data.AUTOTUNE
+non_hull_count = sum(
+    1
+    for r in results
+    if r["expected"] == "non_hull"
 )
 
-test_ds = test_ds.map(
-    preprocess_dataset,
-    num_parallel_calls=tf.data.AUTOTUNE
+
+print("\n==============================================")
+print("DATASET SUMMARY")
+print("==============================================")
+
+print(
+    f"Total images:    {total}"
 )
 
-train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
-val_ds = val_ds.prefetch(tf.data.AUTOTUNE)
-test_ds = test_ds.prefetch(tf.data.AUTOTUNE)
-
-# =====================================================
-# DATA AUGMENTATION
-# =====================================================
-
-data_augmentation = tf.keras.Sequential([
-    layers.RandomFlip("horizontal"),
-    layers.RandomRotation(0.10),
-    layers.RandomZoom(0.10),
-    layers.RandomContrast(0.10),
-], name="data_augmentation")
-
-# =====================================================
-# CLASS WEIGHTS
-# =====================================================
-
-train_labels = np.concatenate(
-    [y.numpy() for x, y in train_ds],
-    axis=0
+print(
+    f"Hull images:     {hull_count}"
 )
 
-class_weights_array = compute_class_weight(
-    class_weight="balanced",
-    classes=np.arange(len(class_names)),
-    y=train_labels
+print(
+    f"Non-hull images: {non_hull_count}"
 )
 
-class_weights = {
-    i: float(weight)
-    for i, weight in enumerate(class_weights_array)
-}
 
-print("\n========== CLASS WEIGHTS ==========")
+# ============================================================
+# THRESHOLD ANALYSIS
+# ============================================================
 
-for i, weight in class_weights.items():
+print("\n==============================================")
+print("THRESHOLD ANALYSIS")
+print("==============================================")
+
+for threshold in THRESHOLDS:
+
+    correctly_rejected_non_hull = sum(
+        1
+        for r in results
+        if (
+            r["expected"] == "non_hull"
+            and r["probability"] >= threshold
+        )
+    )
+
+    correctly_accepted_hull = sum(
+        1
+        for r in results
+        if (
+            r["expected"] == "hull"
+            and r["probability"] < threshold
+        )
+    )
+
+    non_hull_accuracy = (
+        correctly_rejected_non_hull
+        / non_hull_count
+        * 100
+        if non_hull_count
+        else 0
+    )
+
+    hull_accuracy = (
+        correctly_accepted_hull
+        / hull_count
+        * 100
+        if hull_count
+        else 0
+    )
+
+    total_correct = (
+        correctly_rejected_non_hull
+        + correctly_accepted_hull
+    )
+
+    total_accuracy = (
+        total_correct
+        / total
+        * 100
+        if total
+        else 0
+    )
+
     print(
-        f"{class_names[i]}: {weight:.3f}"
+        f"\nThreshold: {threshold:.2f}"
     )
 
-print("===================================\n")
-
-# =====================================================
-# MOBILENETV2
-# =====================================================
-
-base_model = tf.keras.applications.MobileNetV2(
-    input_shape=(224, 224, 3),
-    include_top=False,
-    weights="imagenet"
-)
-
-# Freeze most layers.
-# Fine-tune only the final 30 layers.
-
-base_model.trainable = True
-
-for layer in base_model.layers[:-30]:
-    layer.trainable = False
-
-# =====================================================
-# MODEL
-# =====================================================
-
-inputs = tf.keras.Input(
-    shape=(224, 224, 3),
-    name="image_input"
-)
-
-x = data_augmentation(inputs)
-
-x = base_model(
-    x,
-    training=False
-)
-
-x = layers.GlobalAveragePooling2D(
-    name="global_average_pooling"
-)(x)
-
-x = layers.BatchNormalization(
-    name="batch_normalization"
-)(x)
-
-x = layers.Dense(
-    128,
-    activation="relu",
-    name="dense_128"
-)(x)
-
-x = layers.Dropout(
-    0.4,
-    name="dropout"
-)(x)
-
-outputs = layers.Dense(
-    len(class_names),
-    activation="softmax",
-    name="hull_prediction"
-)(x)
-
-model = tf.keras.Model(
-    inputs,
-    outputs
-)
-
-# =====================================================
-# COMPILE
-# =====================================================
-
-model.compile(
-    optimizer=tf.keras.optimizers.Adam(
-        learning_rate=1e-5
-    ),
-    loss="sparse_categorical_crossentropy",
-    metrics=["accuracy"]
-)
-
-model.summary()
-
-# =====================================================
-# CALLBACKS
-# =====================================================
-
-callbacks = [
-
-    EarlyStopping(
-        monitor="val_loss",
-        patience=6,
-        restore_best_weights=True
-    ),
-
-    ReduceLROnPlateau(
-        monitor="val_loss",
-        factor=0.5,
-        patience=2,
-        min_lr=1e-7,
-        verbose=1
-    )
-]
-
-# =====================================================
-# TRAIN
-# =====================================================
-
-print("\n========== STARTING TRAINING ==========\n")
-
-history = model.fit(
-    train_ds,
-    validation_data=val_ds,
-    epochs=30,
-    class_weight=class_weights,
-    callbacks=callbacks
-)
-
-# =====================================================
-# SAVE CLASS NAMES
-# =====================================================
-
-os.makedirs("model", exist_ok=True)
-
-with open(
-    "model/hull_class_names.json",
-    "w"
-) as f:
-
-    json.dump(
-        class_names,
-        f,
-        indent=2
+    print(
+        f"  Non-hull correctly rejected: "
+        f"{correctly_rejected_non_hull}/{non_hull_count} "
+        f"({non_hull_accuracy:.2f}%)"
     )
 
-# =====================================================
-# SAVE MODEL
-# =====================================================
+    print(
+        f"  Hull correctly accepted: "
+        f"{correctly_accepted_hull}/{hull_count} "
+        f"({hull_accuracy:.2f}%)"
+    )
 
-model.save(
-    "model/hull_model.keras",
-    include_optimizer=False
+    print(
+        f"  Overall accuracy: "
+        f"{total_accuracy:.2f}%"
+    )
+
+
+# ============================================================
+# MISCLASSIFIED AT CURRENT THRESHOLD
+# ============================================================
+
+CURRENT_THRESHOLD = 0.70
+
+
+print("\n==============================================")
+print(
+    f"MISCLASSIFIED AT {CURRENT_THRESHOLD * 100:.0f}%"
+)
+print("==============================================")
+
+
+misclassified = []
+
+
+for r in results:
+
+    probability = r["probability"]
+
+    expected = r["expected"]
+
+    predicted = (
+        "non_hull"
+        if probability >= CURRENT_THRESHOLD
+        else "hull"
+    )
+
+    if predicted != expected:
+
+        misclassified.append(r)
+
+        print(
+            f"\nExpected : {expected}"
+        )
+
+        print(
+            f"Predicted: {predicted}"
+        )
+
+        print(
+            f"Non-hull probability: "
+            f"{probability * 100:.2f}%"
+        )
+
+        print(
+            f"File: {os.path.basename(r['file'])}"
+        )
+
+
+# ============================================================
+# FINAL SUMMARY
+# ============================================================
+
+print("\n==============================================")
+print("FINAL SUMMARY")
+print("==============================================")
+
+print(
+    f"Misclassified: "
+    f"{len(misclassified)}/{total}"
 )
 
 print(
-    "\nModel saved to:"
-    "\nmodel/hull_model.keras"
+    f"Accuracy: "
+    f"{(total - len(misclassified)) / total * 100:.2f}%"
 )
 
-# =====================================================
-# TRAINING ACCURACY GRAPH
-# =====================================================
-
-plt.figure()
-
-plt.plot(
-    history.history["accuracy"],
-    label="Training Accuracy"
-)
-
-plt.plot(
-    history.history["val_accuracy"],
-    label="Validation Accuracy"
-)
-
-plt.xlabel("Epoch")
-plt.ylabel("Accuracy")
-plt.title("Hull Defect Model Accuracy")
-plt.legend()
-
-plt.savefig(
-    "model/training_accuracy.png"
-)
-
-plt.close()
-
-# =====================================================
-# TEST EVALUATION
-# =====================================================
-
-print("\n========== TEST EVALUATION ==========\n")
-
-test_loss, test_acc = model.evaluate(
-    test_ds
-)
-
-print(
-    f"Test Accuracy: {test_acc * 100:.2f}%"
-)
-
-# =====================================================
-# CLASSIFICATION REPORT
-# =====================================================
-
-y_pred = model.predict(
-    test_ds
-)
-
-y_pred_classes = np.argmax(
-    y_pred,
-    axis=1
-)
-
-y_true = []
-
-for images, labels in test_ds:
-    y_true.extend(
-        labels.numpy()
-    )
-
-print("\n========== CLASSIFICATION REPORT ==========\n")
-
-print(
-    classification_report(
-        y_true,
-        y_pred_classes,
-        target_names=class_names,
-        digits=4
-    )
-)
-
-# =====================================================
-# CONFUSION MATRIX
-# =====================================================
-
-cm = confusion_matrix(
-    y_true,
-    y_pred_classes
-)
-
-plt.figure(
-    figsize=(8, 6)
-)
-
-sns.heatmap(
-    cm,
-    annot=True,
-    fmt="d",
-    cmap="Blues",
-    xticklabels=class_names,
-    yticklabels=class_names
-)
-
-plt.xlabel("Predicted")
-plt.ylabel("Actual")
-plt.title("Hull Defect Confusion Matrix")
-
-plt.tight_layout()
-
-plt.savefig(
-    "model/confusion_matrix.png"
-)
-
-plt.close()
-
-print(
-    "\nTraining and evaluation completed successfully."
-)
+print("==============================================\n")
