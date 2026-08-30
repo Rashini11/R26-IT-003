@@ -1,0 +1,51 @@
+{
+  "model": "/Users/dewna/Desktop/Research Project - Dewna/R26-IT-003/ml/models/v6_runs/radar_unknown3/radar_unknown3_best.pth",
+  "classes": [
+    "bird",
+    "ship",
+    "unknown"
+  ],
+  "test_samples": 333,
+  "test_accuracy": 0.720721,
+  "macro_precision": 0.731649,
+  "macro_recall": 0.720721,
+  "macro_f1": 0.695527,
+  "average_confidence": 0.632013,
+  "per_class": {
+    "bird": {
+      "precision": 0.925,
+      "recall": 1.0,
+      "f1-score": 0.961039,
+      "support": 111.0
+    },
+    "ship": {
+      "precision": 0.57764,
+      "recall": 0.837838,
+      "f1-score": 0.683824,
+      "support": 111.0
+    },
+    "unknown": {
+      "precision": 0.692308,
+      "recall": 0.324324,
+      "f1-score": 0.441718,
+      "support": 111.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      111,
+      0,
+      0
+    ],
+    [
+      2,
+      93,
+      16
+    ],
+    [
+      7,
+      68,
+      36
+    ]
+  ]
+}

@@ -90,6 +90,7 @@ export function RadarDatabaseHistory() {
               <th>CONFIDENCE</th>
               <th>BIRD</th>
               <th>SHIP</th>
+              <th>UNKNOWN</th>
               <th>MODEL</th>
             </tr>
           </thead>
@@ -130,6 +131,12 @@ export function RadarDatabaseHistory() {
                   <td data-label="SHIP">
                     {
                       record.ship_probability
+                      ?? "—"
+                    }%
+                  </td>
+                  <td data-label="UNKNOWN">
+                    {
+                      record.unknown_probability
                       ?? "—"
                     }%
                   </td>

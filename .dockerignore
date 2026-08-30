@@ -32,3 +32,5 @@ ml/dataset_v2_balanced
 ml/external_datasets
 
 runs
+ml/dataset_v6_unknown3
+ml/test_inputs

@@ -951,14 +951,30 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
                     %
                   </em>
                 </div>
+                <div>
+                  <small>
+                    UNKNOWN PROBABILITY
+                  </small>
+                  <strong>
+                    UNKNOWN
+                  </strong>
+                  <em>
+                    {fmt(
+                      sar?.unknown_probability,
+                      2
+                    )}
+                    %
+                  </em>
+                </div>
 
               </div>
 
               <div className="sim-decision">
 
-                {sar?.classification
-                  && sar.classification
-                  !== "uncertain"
+                {(
+                  sar?.classification === "bird"
+                  || sar?.classification === "ship"
+                )
                   ? (
                     <CheckCircle2
                       size={15}

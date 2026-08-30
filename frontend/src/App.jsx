@@ -2253,6 +2253,36 @@ const generateSeaStatePDF = () => {
                   %
                 </p>
               </div>
+              <div
+                className="radar-model-card"
+                style={{
+                  borderColor: "#ffb34744",
+                }}
+              >
+                <p
+                  className="rmc-label"
+                  style={{
+                    color: "#ffb347",
+                  }}
+                >
+                  UNKNOWN PROBABILITY
+                </p>
+                <p className="rmc-pred">
+                  UNKNOWN
+                </p>
+                <p
+                  className="rmc-conf"
+                  style={{
+                    color: "#ffb347",
+                  }}
+                >
+                  {Number(
+                    result.unknown_probability
+                    ?? 0
+                  ).toFixed(2)}
+                  %
+                </p>
+              </div>
 
             </div>
 
