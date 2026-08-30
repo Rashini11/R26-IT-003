@@ -66,8 +66,9 @@ import "./App.css";
 /* ══════════════════════════════════════════════════════════
    BACKEND CONFIGURATION — do not modify endpoint names
    ══════════════════════════════════════════════════════════ */
-const API_BASE_URL = "http://localhost:8000";
-
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? "" : "http://localhost:8000");
+  
 /* ══════════════════════════════════════════════════════════
    MODULE DEFINITIONS
    Each module maps to a backend endpoint and has its own
@@ -104,7 +105,7 @@ const MODULES = {
   },
   boat: {
     id: "boat",
-    label: "Boat Detection",
+    label: "Vessel Detection",
     title: "Vessel Detection",
     endpoint: `${API_BASE_URL}/predict-boat-detection`,
     description: "YOLO-based real-time object detection for maritime vessel identification.",
@@ -2252,6 +2253,36 @@ const generateSeaStatePDF = () => {
                   %
                 </p>
               </div>
+              <div
+                className="radar-model-card"
+                style={{
+                  borderColor: "#ffb34744",
+                }}
+              >
+                <p
+                  className="rmc-label"
+                  style={{
+                    color: "#ffb347",
+                  }}
+                >
+                  UNKNOWN PROBABILITY
+                </p>
+                <p className="rmc-pred">
+                  UNKNOWN
+                </p>
+                <p
+                  className="rmc-conf"
+                  style={{
+                    color: "#ffb347",
+                  }}
+                >
+                  {Number(
+                    result.unknown_probability
+                    ?? 0
+                  ).toFixed(2)}
+                  %
+                </p>
+              </div>
 
             </div>
 
@@ -2714,7 +2745,6 @@ const generateSeaStatePDF = () => {
                       : item.vessel_origin || item.results?.find((detection) => detection.detection_type !== "flag")?.label || "Unknown"}</strong>
                     <p>{item.filename}</p>
                     <p>{item.status} · {item.count || 0} detected · {item.frame_count ? `${item.frame_count} frames` : "single image"}</p>
-                    <p>{item.confidence ? `${item.confidence}% confidence` : item.results?.map((detection) => detection.label).filter(Boolean).join(", ") || "No vessel details"}</p>
                     <p>{item.estimated_size || "Size unavailable"} · {item.source || "Unknown source"}</p>
                   </div>
                 ))}

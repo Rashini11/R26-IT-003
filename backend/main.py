@@ -29,6 +29,7 @@ from PIL import Image, ImageStat, ImageEnhance, ImageFilter
 
 from fastapi import FastAPI, UploadFile, File, Form, Depends
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from ultralytics import YOLO
@@ -54,18 +55,23 @@ app = FastAPI(
     version="2.1.0",
 )
 
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "").strip()
+
+ALLOWED_ORIGINS = [
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+if FRONTEND_ORIGIN:
+    ALLOWED_ORIGINS.append(FRONTEND_ORIGIN)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-
-        # Keep these if you may use these ports later
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -160,16 +166,16 @@ RADAR_MODEL_PATH = (
     BASE_PATH
     / "ml"
     / "models"
-    / "v5_runs"
-    / "radar_target89"
-    / "radar_target89_best.pth"
+    / "v6_runs"
+    / "radar_unknown3"
+    / "radar_unknown3_best.pth"
 )
 
-RADAR_MODEL_VERSION = "radar_target89_final"
+RADAR_MODEL_VERSION = "radar_unknown3_v1"
 
-# This binary model was evaluated using direct argmax classification.
-# It was not validated as an open-set unknown detector.
-RADAR_UNKNOWN_THRESHOLD = 0.0
+# The model has an explicit unknown output class.
+# Direct three-class argmax performed better than calibration.
+RADAR_UNKNOWN_THRESHOLD = None
 
 
 # =====================================================
@@ -2256,6 +2262,7 @@ async def get_boat_detection_video(filename: str):
 RADAR_CLASSES = [
     "bird",
     "ship",
+    "unknown",
 ]
 
 radar_model = None
@@ -2264,7 +2271,7 @@ radar_model = None
 # ============================================================
 # FINAL RADAR PREPROCESSING
 #
-# Must match train_radar_target89.py / evaluation:
+# Must match train_radar_unknown3.py / evaluation:
 #   RGB
 #   Resize 64 x 64
 #   ToTensor
@@ -2307,18 +2314,16 @@ class RadarTargetCNN(nn.Module):
             ),
             nn.ReLU(),
 
-            nn.AdaptiveAvgPool2d(
-                (1, 1)
-            ),
+            nn.AdaptiveAvgPool2d((4, 4)),
         )
 
         self.dropout = nn.Dropout(
-            0.45
+            0.30
         )
 
         self.fc = nn.Linear(
-            12,
-            2,
+            12 * 4 * 4,
+            3,
         )
 
     def forward(self, x):
@@ -2471,11 +2476,15 @@ def classify_radar_image_path(
         confidence.item()
     )
 
-    binary_prediction = (
+    model_prediction = (
         RADAR_CLASSES[
             predicted_index
         ]
     )
+
+    # Legacy field retained for frontend, history,
+    # simulation and PDF-report compatibility.
+    binary_prediction = model_prediction
 
     bird_probability = float(
         probabilities[
@@ -2491,26 +2500,24 @@ def classify_radar_image_path(
         ].item()
     )
 
-    if (
-        confidence_value
-        >= RADAR_UNKNOWN_THRESHOLD
-    ):
-        final_prediction = (
-            binary_prediction
-        )
+    unknown_probability = float(
+        probabilities[
+            0,
+            2,
+        ].item()
+    )
 
+    final_prediction = model_prediction
+
+    if final_prediction == "unknown":
         decision_status = (
-            "Classification accepted â€” "
-            "confidence meets the "
-            "deployment threshold"
+            "Three-class model identified "
+            "the input as unknown"
         )
-
     else:
-        final_prediction = "unknown"
-
         decision_status = (
-            "Confidence below threshold â€” "
-            "classification marked unknown"
+            "Three-class Radar "
+            "classification accepted"
         )
 
     return {
@@ -2541,6 +2548,12 @@ def classify_radar_image_path(
                 2,
             ),
 
+        "unknown_probability":
+            round(
+                unknown_probability
+                * 100,
+                2,
+            ),
         "final_prediction":
             final_prediction,
 
@@ -2558,17 +2571,19 @@ def classify_radar_image_path(
 
         # Final RadarTargetCNN evaluation metrics.
         "model_accuracy":
-            79.28,
+            72.07,
         "validation_accuracy":
-            89.09,
+            70.91,
         "macro_precision":
-            0.8535,
+            0.7316,
         "macro_recall":
-            0.7928,
+            0.7207,
         "macro_f1":
-            0.7835,
+            0.6955,
         "test_samples":
-            222,
+            333,
+        "unknown_recall":
+            32.43,
         "test_coverage":
             100.00,
     }
@@ -2662,6 +2677,9 @@ async def predict_radar_object(
                     ),
                     "ship_probability": result.get(
                         "ship_probability"
+                    ),
+                    "unknown_probability": result.get(
+                        "unknown_probability"
                     ),
                     "decision_status": result.get(
                         "decision_status"
@@ -2868,7 +2886,7 @@ def health():
 # =====================================================
 # HOME ROUTE
 # =====================================================
-@app.get("/")
+@app.get("/api-info")
 def home():
     return {
         "message": (
@@ -2924,3 +2942,31 @@ def home():
         },
     }
 
+
+# ============================================================
+# PRODUCTION REACT FRONTEND
+# Keep this section LAST so existing API routes take priority.
+# ============================================================
+
+FRONTEND_DIST = BASE_PATH / "frontend" / "dist"
+
+if FRONTEND_DIST.exists():
+    assets_dir = FRONTEND_DIST / "assets"
+
+    if assets_dir.exists():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=str(assets_dir)),
+            name="frontend-assets",
+        )
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_react_app(full_path: str):
+        requested_file = FRONTEND_DIST / full_path
+
+        if full_path and requested_file.is_file():
+            return FileResponse(str(requested_file))
+
+        return FileResponse(
+            str(FRONTEND_DIST / "index.html")
+        )

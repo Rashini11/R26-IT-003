@@ -7,8 +7,7 @@ import {
 import axios from "axios";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:8000";
+  import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? "" : "http://localhost:8000");
 
 
 function formatDate(value) {
@@ -91,6 +90,7 @@ export function RadarDatabaseHistory() {
               <th>CONFIDENCE</th>
               <th>BIRD</th>
               <th>SHIP</th>
+              <th>UNKNOWN</th>
               <th>MODEL</th>
             </tr>
           </thead>
@@ -131,6 +131,12 @@ export function RadarDatabaseHistory() {
                   <td data-label="SHIP">
                     {
                       record.ship_probability
+                      ?? "—"
+                    }%
+                  </td>
+                  <td data-label="UNKNOWN">
+                    {
+                      record.unknown_probability
                       ?? "—"
                     }%
                   </td>

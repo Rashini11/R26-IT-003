@@ -159,6 +159,10 @@ def _classification_payload(
                 "ship_probability"
             ),
 
+        "unknown_probability":
+            result.get(
+                "unknown_probability"
+            ),
         "unknown_threshold":
             result.get(
                 "unknown_threshold"
