@@ -1,0 +1,45 @@
+SEA STATE STAGED FINE-TUNING REPORT
+========================================
+
+Baseline Test Accuracy: 83.89%
+Baseline Validation Accuracy: 86.39%
+Baseline Test Loss: 0.5979
+
+Fine-Tuning Strategy:
+Stage 1: Freeze complete MobileNetV2 feature extractor and train classifier only.
+Stage 2: Unfreeze final 1 MobileNetV2 feature blocks and classifier.
+Stage 1 LR: 0.001
+Stage 2 backbone LR: 1e-05
+Stage 2 classifier LR: 0.0001
+
+Train Size: 5040
+Validation Size: 1080
+Test Size: 1080
+
+Image overlap between splits: 0
+
+Stage 1 Best Validation Accuracy: 79.72%
+Stage 2 Best Validation Accuracy: 84.17%
+Fine-Tuned Test Accuracy: 72.31%
+Fine-Tuned Test Loss: 0.7076
+Macro Precision: 70.91%
+Macro Recall: 72.31%
+Macro F1: 71.06%
+
+Classification Report:
+              precision    recall  f1-score   support
+
+        calm     0.8292    0.8630    0.8457       270
+    moderate     0.5858    0.5815    0.5836       270
+       rough     0.6080    0.4481    0.5160       270
+  very_rough     0.8133    1.0000    0.8970       270
+
+    accuracy                         0.7231      1080
+   macro avg     0.7091    0.7231    0.7106      1080
+weighted avg     0.7091    0.7231    0.7106      1080
+
+Confusion Matrix:
+[[233  36   1   0]
+ [ 36 157  77   0]
+ [ 12  75 121  62]
+ [  0   0   0 270]]

@@ -12,7 +12,9 @@ Total Experimental Images: 7200
 
 Image overlap between splits: 0
 
-Best Validation Accuracy: 86.39%
+Selected Checkpoint Validation Accuracy: 86.39%
+Selected Checkpoint Validation Loss: 0.3364
+Highest Observed Validation Accuracy: 88.24%
 Final Test Accuracy: 83.89%
 Final Test Loss: 0.5979
 

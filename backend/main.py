@@ -141,6 +141,18 @@ SEA_MODEL_PATH = os.path.join(
     "image_only_model.pth",
 )
 
+SEA_EXTERNAL_MODEL_PATH = os.path.join(
+    BASE_DIR,
+    "model",
+    "image_only_model_demo_55_frozen_backup.pth",
+)
+
+# Ensemble weighting:
+# Research model keeps 40% influence.
+# External-adapted model gets 60% for web-image robustness.
+SEA_RESEARCH_WEIGHT = 0.40
+SEA_EXTERNAL_WEIGHT = 0.60
+
 LABEL_MAP_PATH = os.path.join(
     BASE_DIR,
     "model",
@@ -881,6 +893,8 @@ async def predict_hull_defect(
 # SEA STATE MODEL - PYTORCH
 # =====================================================
 sea_model = None
+sea_external_model = None
+
 label_map = {}
 reverse_label_map = {}
 
@@ -935,13 +949,13 @@ class ImageOnlyMobileNet(nn.Module):
 
 try:
     if (
-        os.path.exists(
-            SEA_MODEL_PATH
-        )
-        and os.path.exists(
-            LABEL_MAP_PATH
-        )
+        os.path.exists(SEA_MODEL_PATH)
+        and os.path.exists(LABEL_MAP_PATH)
     ):
+        # ============================================
+        # LOAD LABEL MAP
+        # ============================================
+
         with open(
             LABEL_MAP_PATH,
             "r",
@@ -954,19 +968,18 @@ try:
             in label_map.items()
         }
 
+        # ============================================
+        # MODEL 1 — RESEARCH MODEL
+        # ============================================
+
         print(
-            "Loading sea-state "
-            "model from:",
+            "Loading research sea-state model from:",
             SEA_MODEL_PATH,
         )
 
-        sea_model = (
-            ImageOnlyMobileNet(
-                num_classes=len(
-                    label_map
-                )
-            ).to(device)
-        )
+        sea_model = ImageOnlyMobileNet(
+            num_classes=len(label_map)
+        ).to(device)
 
         sea_model.load_state_dict(
             torch.load(
@@ -979,23 +992,76 @@ try:
         sea_model.eval()
 
         print(
-            "Sea-state model "
-            "loaded successfully"
+            "Research sea-state model loaded successfully"
         )
+
+        # ============================================
+        # MODEL 2 — EXTERNAL / WEB-ADAPTED MODEL
+        # ============================================
+
+        if os.path.exists(
+            SEA_EXTERNAL_MODEL_PATH
+        ):
+            print(
+                "Loading external sea-state model from:",
+                SEA_EXTERNAL_MODEL_PATH,
+            )
+
+            sea_external_model = (
+                ImageOnlyMobileNet(
+                    num_classes=len(
+                        label_map
+                    )
+                ).to(device)
+            )
+
+            sea_external_model.load_state_dict(
+                torch.load(
+                    SEA_EXTERNAL_MODEL_PATH,
+                    map_location=device,
+                    weights_only=True,
+                )
+            )
+
+            sea_external_model.eval()
+
+            print(
+                "External sea-state model loaded successfully"
+            )
+
+            print(
+                "Sea-state ensemble enabled:",
+                f"research={SEA_RESEARCH_WEIGHT}",
+                f"external={SEA_EXTERNAL_WEIGHT}",
+            )
+
+        else:
+            print(
+                "WARNING: External sea-state model not found."
+            )
+
+            print(
+                "Falling back to research model only."
+            )
+
+            sea_external_model = None
 
     else:
         print(
-            "WARNING: Sea-state model "
+            "WARNING: Sea-state research model "
             "or label map not found"
         )
 
 except Exception as e:
     print(
-        "ERROR loading "
-        "sea-state model:",
+        "ERROR loading sea-state models:",
         e,
     )
+
+    traceback.print_exc()
+
     sea_model = None
+    sea_external_model = None
 
 
 # =====================================================
@@ -1486,14 +1552,90 @@ async def predict_sea_state(
 
         image = sea_transform(prediction_image).unsqueeze(0).to(device)
 
+        # =====================================================
+        # SEA-STATE ENSEMBLE INFERENCE
+        # =====================================================
+
         with torch.no_grad():
-            output = sea_model(image)
-            probabilities = torch.softmax(output, dim=1)
-            confidence, predicted_class = torch.max(probabilities, 1)
+
+            # -----------------------------------------------
+            # MODEL 1 - RESEARCH MODEL
+            # -----------------------------------------------
+            research_output = sea_model(image)
+
+            research_probabilities = torch.softmax(
+                research_output,
+                dim=1,
+            )
+
+            (
+                research_confidence,
+                research_class,
+            ) = torch.max(
+                research_probabilities,
+                dim=1,
+            )
+
+            # -----------------------------------------------
+            # MODEL 2 - EXTERNAL / WEB-ADAPTED MODEL
+            # -----------------------------------------------
+            if sea_external_model is not None:
+
+                external_output = sea_external_model(image)
+
+                external_probabilities = torch.softmax(
+                    external_output,
+                    dim=1,
+                )
+
+                (
+                    external_confidence,
+                    external_class,
+                ) = torch.max(
+                    external_probabilities,
+                    dim=1,
+                )
+
+                # -------------------------------------------
+                # WEIGHTED PROBABILITY ENSEMBLE
+                # -------------------------------------------
+                probabilities = (
+                    SEA_RESEARCH_WEIGHT
+                    * research_probabilities
+                    +
+                    SEA_EXTERNAL_WEIGHT
+                    * external_probabilities
+                )
+
+                ensemble_used = True
+
+            else:
+
+                probabilities = research_probabilities
+
+                external_confidence = None
+                external_class = None
+
+                ensemble_used = False
+
+            (
+                confidence,
+                predicted_class,
+            ) = torch.max(
+                probabilities,
+                dim=1,
+            )
 
         predicted_class = predicted_class.item()
-        predicted_label = reverse_label_map[predicted_class]
-        confidence_percent = round(confidence.item() * 100, 2)
+
+        predicted_label = reverse_label_map[
+            predicted_class
+        ]
+
+        confidence_percent = round(
+            confidence.item() * 100,
+            2,
+        )
 
         class_probabilities = {}
         for i, prob in enumerate(probabilities[0]):
@@ -1518,11 +1660,92 @@ async def predict_sea_state(
 
         processing_time = round(time.perf_counter() - start_time, 3)
 
+        # =====================================================
+        # INDIVIDUAL MODEL DEBUG RESULTS
+        # =====================================================
+
+        research_class_index = int(
+            research_class.item()
+        )
+
+        research_prediction = reverse_label_map[
+            research_class_index
+        ]
+
+        research_confidence_percent = round(
+            research_confidence.item() * 100,
+            2,
+        )
+
+        if (
+            sea_external_model is not None
+            and external_class is not None
+        ):
+
+            external_class_index = int(
+                external_class.item()
+            )
+
+            external_prediction = reverse_label_map[
+                external_class_index
+            ]
+
+            external_confidence_percent = round(
+                external_confidence.item() * 100,
+                2,
+            )
+
+        else:
+
+            external_prediction = None
+            external_confidence_percent = None
+
+        print(
+            "SEA ENSEMBLE:",
+            "research=",
+            research_prediction,
+            research_confidence_percent,
+            "| external=",
+            external_prediction,
+            external_confidence_percent,
+            "| final=",
+            predicted_label,
+            confidence_percent,
+        )
+
         result = {
             "timestamp": timestamp,
             "filename": safe_filename,
             "predicted_sea_state": predicted_label,
             "confidence": confidence_percent,
+
+            "ensemble": {
+                "enabled": ensemble_used,
+
+                "research_model": {
+                    "prediction": research_prediction,
+                    "confidence": research_confidence_percent,
+                    "weight": SEA_RESEARCH_WEIGHT,
+                },
+
+                "external_model": {
+                    "prediction": external_prediction,
+                    "confidence": external_confidence_percent,
+                    "weight": (
+                        SEA_EXTERNAL_WEIGHT
+                        if ensemble_used
+                        else 0
+                    ),
+                },
+
+                "models_agree": (
+                    research_prediction
+                    == external_prediction
+                    if ensemble_used
+                    else True
+                ),
+            },
+
             "validation": validation,
             "processing_time": processing_time,
             "probabilities": class_probabilities,
