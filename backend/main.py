@@ -139,7 +139,7 @@ HULL_MODEL_PATH = os.path.join(
 HULL_VALIDATOR_MODEL_PATH = os.path.join(
     BASE_DIR,
     "model",
-    "hull_validator.keras",
+    "hull_validator_hardneg.keras",
 )
 
 SEA_MODEL_PATH = os.path.join(
@@ -332,9 +332,68 @@ HULL_CONFIDENCE_THRESHOLD = 0.70
 recommendations = {
     "biofouling": "Clean hull using high-pressure water or antifouling treatment.",
     "corrosion": "Apply anti-corrosion coating or replace damaged metal.",
-    "cracks": "Critical damage. Perform welding repair immediately.",
+    "cracks": "Arrange urgent professional inspection to assess the crack and determine the appropriate repair.",
     "paint_damage": "Inspect the affected area and repair or reapply marine-grade protective coating.",
 }
+
+
+# =====================================================
+# RULE-BASED PRELIMINARY SEVERITY ASSESSMENT
+# =====================================================
+
+SEVERITY_RULES = {
+    "biofouling": {
+        "level": "Low",
+        "reason": "Biofouling detected; its extent is not measured.",
+        "action": "Plan hull cleaning and inspect the affected area.",
+    },
+    "corrosion": {
+        "level": "High",
+        "reason": "Corrosion may compromise protective coatings or metal.",
+        "action": "Arrange a qualified inspection and assess metal loss.",
+    },
+    "cracks": {
+        "level": "Critical",
+        "reason": "A possible crack may indicate structural damage.",
+        "action": "Arrange urgent professional inspection before deciding on repairs.",
+    },
+    "paint_damage": {
+        "level": "Moderate",
+        "reason": "Paint or protective coating damage is indicated.",
+        "action": "Inspect the affected area and plan coating repair.",
+    },
+}
+
+
+
+def assess_defect_severity(defect):
+    """
+    Preliminary rule-based priority by defect category.
+    This does not measure actual damage extent.
+    """
+    rule = SEVERITY_RULES.get(defect)
+
+    if rule is None:
+        return {
+            "level": "Undetermined",
+            "method": "Rule-based preliminary assessment",
+            "reason": "No severity rule is available for this defect.",
+            "recommended_action": "Request a manual inspection.",
+            "notice": (
+                "Confirm the findings through professional inspection."
+            ),
+        }
+
+    return {
+        "level": rule["level"],
+        "method": "Rule-based preliminary assessment",
+        "reason": rule["reason"],
+        "recommended_action": rule["action"],
+        "notice": (
+            "Priority is based on defect category, not measured "
+            "damage extent. Confirm through professional inspection."
+        ),
+    }
 
 try:
     if os.path.exists(HULL_MODEL_PATH):
@@ -524,7 +583,28 @@ def classify_hull_or_non_hull(image):
     )
     print("====================================\n")
 
-    if non_hull_probability >= HULL_VALIDATOR_THRESHOLD:
+    # =====================================================
+    # HULL / NON-HULL DECISION
+    # =====================================================
+
+    if hull_probability >= HULL_VALIDATOR_THRESHOLD:
+
+        return {
+            "is_hull": True,
+            "hull_confidence": round(
+                hull_probability * 100,
+                2,
+            ),
+            "non_hull_confidence": round(
+                non_hull_probability * 100,
+                2,
+            ),
+            "message": (
+                "Underwater hull image accepted."
+            ),
+        }
+
+    elif non_hull_probability >= HULL_VALIDATOR_THRESHOLD:
 
         return {
             "is_hull": False,
@@ -542,20 +622,23 @@ def classify_hull_or_non_hull(image):
             ),
         }
 
-    return {
-        "is_hull": True,
-        "hull_confidence": round(
-            hull_probability * 100,
-            2,
-        ),
-        "non_hull_confidence": round(
-            non_hull_probability * 100,
-            2,
-        ),
-        "message": (
-            "Underwater hull image accepted."
-        ),
-    }
+    else:
+
+        return {
+            "is_hull": False,
+            "hull_confidence": round(
+                hull_probability * 100,
+                2,
+            ),
+            "non_hull_confidence": round(
+                non_hull_probability * 100,
+                2,
+            ),
+            "message": (
+                "The system could not reliably determine "
+                "whether the image shows an underwater ship hull."
+            ),
+        }
 
 def make_gradcam_heatmap(
     img_array,
@@ -927,76 +1010,93 @@ async def predict_hull_defect(
         # RECOMMENDATION
         # =====================================================
 
-        if multiple_defects:
+        
 
+        warning = None
+
+        severity = assess_defect_severity(prediction)
+
+        if multiple_defects:
             recommendation = (
                 "Multiple possible defects detected: "
                 + ", ".join(
-                    item["defect"]
-                    for item in reported_defects
+                    item["defect"] for item in reported_defects
                 )
-                + ". Inspect the affected area carefully "
-                "and perform appropriate repair for each defect."
+                + ". Arrange a professional hull inspection and "
+                "prioritize repairs based on the confirmed findings."
             )
-
         else:
-
-            recommendation = recommendations[prediction]
-
-        LAST_CONV_LAYER = "Conv_1"
-
-        heatmap = (
-            make_gradcam_heatmap(
-                img_array,
-                hull_model,
-                LAST_CONV_LAYER,
+            recommendation = (
+                recommendations[prediction]
+                + " Preliminary priority: "
+                + severity["level"]
+                + ". "
+                + severity["recommended_action"]
             )
-        )
 
-        heatmap = cv2.resize(
-            heatmap,
-            (
-                original_img.shape[1],
-                original_img.shape[0],
-            ),
-        )
+                # =====================================================
+        # GENERATE GRAD-CAM EXPLANATION
+        # =====================================================
+        gradcam_base64 = None
 
-        heatmap = np.uint8(
-            255 * heatmap
-        )
+        try:
+            heatmap = make_gradcam_heatmap(
+                img_array=img_array,
+                model=hull_model,
+                last_conv_layer_name="out_relu",
+                pred_index=int(np.argmax(probabilities)),
+            )
 
-        heatmap = cv2.applyColorMap(
-            heatmap,
-            cv2.COLORMAP_JET,
-        )
-
-        superimposed_img = (
-            cv2.addWeighted(
-                original_img,
-                0.6,
+            # Resize heatmap to match the input image
+            heatmap_resized = cv2.resize(
                 heatmap,
+                (224, 224),
+            )
+
+            heatmap_uint8 = np.uint8(
+                255 * heatmap_resized
+            )
+
+            # Create colored heatmap
+            heatmap_color = cv2.applyColorMap(
+                heatmap_uint8,
+                cv2.COLORMAP_JET,
+            )
+
+            # Convert original RGB image to BGR
+            original_bgr = cv2.cvtColor(
+                img_resized,
+                cv2.COLOR_RGB2BGR,
+            )
+
+            # Overlay heatmap on original image
+            overlay = cv2.addWeighted(
+                original_bgr,
+                0.6,
+                heatmap_color,
                 0.4,
                 0,
             )
-        )
 
-        _, buffer = cv2.imencode(
-            ".jpg",
-            superimposed_img,
-        )
+            # Encode overlay as Base64 PNG
+            success, encoded_image = cv2.imencode(
+                ".png",
+                overlay,
+            )
 
-        gradcam_base64 = (
-            base64.b64encode(
-                buffer
-            ).decode("utf-8")
-        )
+            if success:
+                gradcam_base64 = (
+                    "data:image/png;base64,"
+                    + base64.b64encode(
+                        encoded_image.tobytes()
+                    ).decode("utf-8")
+                )
 
-        warning = (
-            "Low confidence. Manual "
-            "inspection recommended."
-            if confidence < HULL_CONFIDENCE_THRESHOLD
-            else "Prediction reliable."
-        )
+        except Exception as gradcam_error:
+            print(
+                "Grad-CAM generation failed:",
+                gradcam_error,
+            )
 
         # =====================================================
         # SAVE HULL PREDICTION TO MONGODB
@@ -1009,8 +1109,9 @@ async def predict_hull_defect(
         "prediction": prediction,
         "confidence": confidence,
         "detected_defects": reported_defects,
-        "multiple_defects": multiple_defects,
+        "multiple_defects": multiple_defects,        
         "recommendation": recommendation,
+        "severity": severity,
         "warning": warning,
     }
 
@@ -1023,6 +1124,7 @@ async def predict_hull_defect(
             "detected_defects": detected_defects,
             "multiple_defects": multiple_defects,
             "recommendation": recommendation,
+            "severity": severity,
             "warning": warning,
             "gradcam": gradcam_base64,
         }
@@ -1593,7 +1695,7 @@ def clear_hull_prediction_history():
         except Exception as e:
             print(
                 "Error clearing hull prediction history from MongoDB:",
-                e
+                
             )
 
     local_history = _load_local_hull_history()

@@ -287,3 +287,16 @@ best.pt
 test_images/
 
 debug/
+
+# Local backups
+frontend/App_working_backup.jsx
+frontend/src/*backup*
+frontend/src/*before_*
+frontend/hull_pdf_function_backup.txt
+# Local backend backups
+backend/main_backup_before_severity.py
+backend/main_before_severity_final.py
+
+# Local model training backups
+model/train_hull_validator_backup.py
+model/hull_validator_hardneg_backup.keras
