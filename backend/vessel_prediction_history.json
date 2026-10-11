@@ -108,5 +108,67 @@
         "detection_type": "ship"
       }
     ]
+  },
+  {
+    "image": "194.png",
+    "status": "Detected",
+    "confidence": 96.9,
+    "timestamp": "2026-10-10 14:42:33",
+    "source": "Drone",
+    "estimated_size": "Large Vessel",
+    "vessel_origin": "Foreign Ship",
+    "results": [
+      {
+        "label": "Foreign Ship",
+        "confidence": 96.9,
+        "sl_flag_detected": false,
+        "box": [
+          0.0,
+          34.19865798950195,
+          249.1190643310547,
+          215.7223663330078
+        ],
+        "detection_type": "ship"
+      }
+    ],
+    "count": 1,
+    "image_size": [
+      256,
+      256
+    ],
+    "demo": false,
+    "module": "vessel",
+    "mode": "image"
+  },
+  {
+    "image": "202.png",
+    "status": "Detected",
+    "confidence": 89.4,
+    "timestamp": "2026-10-10 17:11:00",
+    "source": "Drone",
+    "estimated_size": "Large Vessel",
+    "vessel_origin": "Foreign Ship",
+    "results": [
+      {
+        "label": "Foreign Ship",
+        "confidence": 89.4,
+        "sl_flag_detected": false,
+        "box": [
+          0.10114745795726776,
+          82.21875,
+          254.975830078125,
+          208.38717651367188
+        ],
+        "detection_type": "ship"
+      }
+    ],
+    "count": 1,
+    "image_size": [
+      256,
+      256
+    ],
+    "demo": false,
+    "module": "vessel",
+    "mode": "image"
   }
 ]

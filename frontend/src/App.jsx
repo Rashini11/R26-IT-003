@@ -43,6 +43,7 @@ import {
   LockKeyhole,
 } from "lucide-react";
 import LiveSimulation from "./LiveSimulation";
+import LiveVesselTracker from "./vesselTracking/LiveVesselTracker";
 
 import DatabaseViewer from "./DatabaseViewer";
 
@@ -490,6 +491,7 @@ function AppContent() {
   const [isVideo, setIsVideo] = useState(false);
   const [analysedVideoUrl, setAnalysedVideoUrl] = useState(null);
   const [videoPreviewError, setVideoPreviewError] = useState(false);
+  const vesselImageUploadRef = useRef(null);
 
   useEffect(() => {
     window.localStorage.setItem("oceaniq-media-fit", mediaFit);
@@ -2122,6 +2124,27 @@ const generateSeaStatePDF = () => {
               </div>
             )}
 
+            {!isVideo && result.id_text && (
+              <div className="sea-feature-card vessel-id-text-card">
+                <p className="sea-feature-title">VESSEL ID TEXT</p>
+                {result.id_text.readings?.length > 0 ? (
+                  <div className="vessel-list">
+                    {result.id_text.readings.map((reading, index) => (
+                      <div
+                        key={`${reading.text}-${index}`}
+                        className="vessel-item"
+                        style={{ borderColor: mod.colorMid }}
+                      >
+                        <span className="vessel-label">{reading.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="sea-support-text">{result.id_text.message}</p>
+                )}
+              </div>
+            )}
+
           </div>
         )}
 
@@ -2502,11 +2525,41 @@ const generateSeaStatePDF = () => {
           </div>
         ) : (
           <>
+        {activeModule === "boat" && (
+          <>
+            <div className="vessel-section-heading vessel-section-heading--map">
+              <span className="vessel-section-number">01</span>
+              <div>
+                <h2>LIVE VESSEL MAP</h2>
+                <p>Explore vessel positions and choose a map location.</p>
+              </div>
+            </div>
+            <LiveVesselTracker
+              onGoToImageDetection={() =>
+                vesselImageUploadRef.current?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                })
+              }
+            />
+            <div className="vessel-section-heading vessel-section-heading--analysis">
+              <span className="vessel-section-number">02</span>
+              <div>
+                <h2>IMAGE &amp; VIDEO ANALYSIS</h2>
+                <p>Upload media, inspect the preview, and run vessel detection.</p>
+              </div>
+            </div>
+          </>
+        )}
+
         {/* ── 3-panel analysis grid ── */}
-        <div className="analysis-grid">
+        <div className={`analysis-grid ${activeModule === "boat" ? "vessel-analysis-grid" : ""}`}>
 
           {/* ─── PANEL 1: Upload ─── */}
-          <section className="a-card upload-card">
+          <section
+            ref={vesselImageUploadRef}
+            className="a-card upload-card"
+          >
             <div className="a-card-header">
               <span className="a-card-label"><Upload size={11} /> INPUT IMAGE</span>
               <span className="a-card-tag" style={{ color: mod.color }}>{mod.statusLabel}</span>
@@ -2694,7 +2747,10 @@ const generateSeaStatePDF = () => {
         {activeModule === "boat" && (
           <section className="a-card vessel-history-panel">
             <div className="sea-history-header">
-              <p className="sea-feature-title">VESSEL DETECTION HISTORY</p>
+              <div className="vessel-history-title">
+                <span className="vessel-section-number">03</span>
+                <p className="sea-feature-title">VESSEL DETECTION HISTORY</p>
+              </div>
               <div className="sea-history-actions">
                 <button onClick={fetchVesselHistory} disabled={vesselHistoryLoading}>
                   {vesselHistoryLoading ? "LOADING…" : "REFRESH"}

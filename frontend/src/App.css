@@ -1600,11 +1600,95 @@ p { margin: 0; }
   margin-top: 8px;
 }
 
+.vessel-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 18px 24px 0;
+}
+
+.vessel-section-heading--map {
+  margin: 14px clamp(14px, 2vw, 28px) 0;
+}
+
+.vessel-section-heading--analysis {
+  margin-top: 24px;
+}
+
+.vessel-section-heading h2 {
+  margin: 0;
+  color: var(--text-100);
+  font: 700 12px var(--font-mono);
+  letter-spacing: .11em;
+}
+
+.vessel-section-heading p {
+  margin: 4px 0 0;
+  color: var(--text-300);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.vessel-section-number {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(167, 139, 250, .32);
+  border-radius: 7px;
+  background: rgba(167, 139, 250, .08);
+  color: #c7b5ff;
+  font: 10px var(--font-mono);
+}
+
+.vessel-analysis-grid {
+  gap: 13px;
+  padding-top: 9px;
+}
+
+.vessel-analysis-grid .a-card {
+  border-color: rgba(167, 139, 250, .2);
+}
+
+.vessel-history-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vessel-history-title .sea-feature-title {
+  color: var(--text-100);
+  letter-spacing: .1em;
+}
+
 @media (max-width: 720px) {
   .sea-risk-topline,
   .sea-suitability-head,
   .sea-history-header,
   .sea-recommendation-row { align-items: flex-start; flex-direction: column; }
+}
+
+@media (max-width: 768px) {
+  .vessel-section-heading {
+    margin-right: 14px;
+    margin-left: 14px;
+  }
+
+  .vessel-section-heading--map {
+    margin-right: 14px;
+    margin-left: 14px;
+  }
+
+  .vessel-section-heading--analysis {
+    margin-top: 18px;
+  }
+
+  .vessel-history-panel {
+    margin-right: 14px;
+    margin-left: 14px;
+    padding: 14px;
+  }
 }
 
 @media (max-width: 768px) {

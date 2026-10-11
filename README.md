@@ -7,19 +7,19 @@ The repository now contains a combined maritime simulation service that reuses t
 From the project root:
 
 ```bash
-./venv/bin/python -m pip install -r backend/requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 ```
 
 Terminal 1 — existing image-classification backend:
 
 ```bash
-./venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+npm run backend
 ```
 
 Terminal 2 — SAR/AIS simulation, GRU inference and DCPA/TCPA service:
 
 ```bash
-./venv/bin/python -m uvicorn backend.simulation.app:app --host 127.0.0.1 --port 8001
+.\.venv\Scripts\python.exe -m uvicorn backend.simulation.app:app --host 127.0.0.1 --port 8001
 ```
 
 Terminal 3 — dashboard:

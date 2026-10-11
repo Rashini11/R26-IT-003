@@ -1,0 +1,309 @@
+.live-vessel-tracker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 14px clamp(14px, 2vw, 28px) 0;
+}
+
+.live-vessel-tracker,
+.live-vessel-tracker * {
+  box-sizing: border-box;
+}
+
+.live-vessel-tracker .lvt-control-card,
+.live-vessel-tracker .lvt-map-wrap {
+  border: 1px solid var(--border-hi);
+  border-radius: var(--r-sm);
+  background: rgba(4, 15, 26, 0.91);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.16);
+}
+
+.live-vessel-tracker .lvt-control-sections {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.8fr) minmax(0, 1.7fr);
+  gap: 12px;
+}
+
+.live-vessel-tracker .lvt-main-title,
+.live-vessel-tracker .lvt-map-title {
+  display: flex;
+  align-items: center;
+}
+
+.live-vessel-tracker .lvt-control-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 190px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  overflow: hidden;
+  padding: 18px;
+  background:
+    linear-gradient(145deg, rgba(15, 40, 58, 0.92), rgba(4, 15, 26, 0.96));
+}
+
+.live-vessel-tracker .lvt-control-card::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--cyan), rgba(53, 213, 255, 0.05));
+  content: "";
+}
+
+.live-vessel-tracker .lvt-intro-card {
+  border-color: rgba(53, 213, 255, 0.32);
+}
+
+.live-vessel-tracker .lvt-location-settings-card {
+  min-height: 0;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 16px;
+  border-color: rgba(0, 255, 179, 0.25);
+}
+
+.live-vessel-tracker .lvt-location-settings-card::before {
+  background: linear-gradient(90deg, var(--success), rgba(0, 255, 179, 0.04));
+}
+
+.live-vessel-tracker .lvt-card-kicker {
+  color: var(--text-300);
+  font: 10px var(--font-mono);
+  letter-spacing: 0.12em;
+}
+
+.live-vessel-tracker .lvt-control-card h2 {
+  margin: 0;
+  color: var(--cyan);
+  font: 15px var(--font-mono);
+  letter-spacing: 0.09em;
+}
+
+.live-vessel-tracker .lvt-main-title {
+  gap: 8px;
+}
+
+.live-vessel-tracker .lvt-control-card > p,
+.live-vessel-tracker .lvt-location-source,
+.live-vessel-tracker .lvt-location-message,
+.live-vessel-tracker .lvt-disclaimer {
+  color: var(--text-300);
+  font-size: 12px;
+}
+
+.live-vessel-tracker .lvt-combined-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(128, 164, 184, 0.16);
+}
+
+.live-vessel-tracker .lvt-location-source {
+  margin: 3px 0 0;
+  font-size: 10px;
+}
+
+.live-vessel-tracker .lvt-control-card > p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.live-vessel-tracker .lvt-image-detection-button,
+.live-vessel-tracker .lvt-combined-card-top button,
+.live-vessel-tracker .lvt-manual-form button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--border-hi);
+  border-radius: 6px;
+  background: var(--bg-panel-hi);
+  color: var(--text-100);
+  cursor: pointer;
+  font-size: 10px;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.live-vessel-tracker .lvt-current-coordinates {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-100);
+  font: 600 14px var(--font-mono);
+}
+
+.live-vessel-tracker .lvt-current-coordinates svg {
+  flex: 0 0 auto;
+  color: var(--success);
+}
+
+.live-vessel-tracker .lvt-image-detection-button {
+  margin-top: auto;
+  border-color: rgba(53, 213, 255, 0.45);
+  background: rgba(53, 213, 255, 0.08);
+  color: var(--cyan);
+  font: 10px var(--font-mono);
+}
+
+.live-vessel-tracker .lvt-image-detection-button:hover {
+  border-color: var(--cyan);
+  background: rgba(53, 213, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.live-vessel-tracker .lvt-combined-card-top button,
+.live-vessel-tracker .lvt-manual-form button {
+  border-color: rgba(0, 255, 179, 0.35);
+  background: rgba(0, 255, 179, 0.07);
+  color: var(--success);
+}
+
+.live-vessel-tracker .lvt-combined-card-top button:hover,
+.live-vessel-tracker .lvt-manual-form button:hover {
+  border-color: var(--success);
+  background: rgba(0, 255, 179, 0.13);
+  transform: translateY(-1px);
+}
+
+.live-vessel-tracker .lvt-manual-form {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(90px, 1fr)) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.live-vessel-tracker .lvt-manual-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-300);
+  font: 9px var(--font-mono);
+}
+
+.live-vessel-tracker .lvt-manual-form input {
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--border-hi);
+  border-radius: 5px;
+  background: rgba(2, 10, 18, 0.8);
+  color: var(--text-100);
+  padding: 0 8px;
+  font: 11px var(--font-mono);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.live-vessel-tracker .lvt-manual-form input:focus {
+  border-color: var(--cyan);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(53, 213, 255, 0.12);
+}
+
+.live-vessel-tracker .lvt-manual-form button {
+  min-height: 30px;
+  white-space: nowrap;
+}
+
+.live-vessel-tracker .lvt-location-message {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.live-vessel-tracker .lvt-map-wrap {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.live-vessel-tracker .lvt-map-title {
+  min-height: 42px;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--cyan);
+  font: 9px var(--font-mono);
+  letter-spacing: 0.07em;
+}
+
+.live-vessel-tracker .lvt-map-title > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.live-vessel-tracker .lvt-map-title > span:last-child {
+  color: var(--text-300);
+  text-align: right;
+}
+
+.live-vessel-tracker .lvt-vesselfinder-map {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 600px;
+  border: 0;
+  background: #102637;
+}
+
+.live-vessel-tracker .lvt-disclaimer {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 650px) {
+  .live-vessel-tracker {
+    padding: 10px 12px 0;
+  }
+
+  .live-vessel-tracker .lvt-control-sections {
+    grid-template-columns: 1fr;
+  }
+
+  .live-vessel-tracker .lvt-control-card {
+    min-height: 0;
+    padding: 16px;
+  }
+
+  .live-vessel-tracker .lvt-manual-form input {
+    width: 100%;
+  }
+
+  .live-vessel-tracker .lvt-manual-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .live-vessel-tracker .lvt-manual-form button {
+    grid-column: 1 / -1;
+  }
+
+  .live-vessel-tracker .lvt-vesselfinder-map {
+    height: 450px;
+  }
+}
+
+@media (min-width: 651px) and (max-width: 980px) {
+  .live-vessel-tracker .lvt-control-sections {
+    grid-template-columns: minmax(200px, 0.75fr) minmax(0, 1.5fr);
+  }
+
+  .live-vessel-tracker .lvt-manual-form {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .live-vessel-tracker .lvt-manual-form button {
+    grid-column: 1 / -1;
+  }
+}

@@ -2,13 +2,21 @@ const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
-const pythonPath =
+const projectRoot = path.resolve(__dirname, "..");
+const pythonExecutable =
+  process.platform === "win32" ? "python.exe" : "python";
+const pythonRelativePath =
   process.platform === "win32"
-    ? path.resolve("venv", "Scripts", "python.exe")
-    : path.resolve("venv", "bin", "python");
+    ? path.join("Scripts", pythonExecutable)
+    : path.join("bin", pythonExecutable);
+const pythonPath = [".venv", "venv"]
+  .map((environment) => path.join(projectRoot, environment, pythonRelativePath))
+  .find((candidate) => fs.existsSync(candidate));
 
-if (!fs.existsSync(pythonPath)) {
-  console.error(`[OceanIQ] Python virtual environment not found: ${pythonPath}`);
+if (!pythonPath) {
+  console.error(
+    `[OceanIQ] Python virtual environment not found. Checked .venv and venv under ${projectRoot}.`
+  );
   process.exit(1);
 }
 
@@ -28,7 +36,7 @@ const backend = spawn(
     "8000",
   ],
   {
-    cwd: process.cwd(),
+    cwd: projectRoot,
     stdio: "inherit",
   }
 );
