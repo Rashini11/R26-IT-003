@@ -41,9 +41,12 @@ import {
   Navigation,
   UserRoundCog,
   LockKeyhole,
+  ClipboardList,
 } from "lucide-react";
 import LiveSimulation from "./LiveSimulation";
 import LiveVesselTracker from "./vesselTracking/LiveVesselTracker";
+import VesselInspectionPanel from "./VesselInspectionPanel";
+import VesselInspectionHistory from "./VesselInspectionHistory";
 
 import DatabaseViewer from "./DatabaseViewer";
 
@@ -60,14 +63,9 @@ import LogoutButton from "./components/LogoutButton";
 import AdminUsers from "./components/AdminUsers";
 import MediaFitToggle from "./components/MediaFitToggle";
 import ThemeToggle from "./components/ThemeToggle";
-import { useAuth } from "./context/AuthContext";
+import { API_BASE_URL, useAuth } from "./context/AuthContext";
 import { useTheme } from "./context/ThemeContext";
 import "./App.css";
-
-/* ══════════════════════════════════════════════════════════
-   BACKEND CONFIGURATION — do not modify endpoint names
-   ══════════════════════════════════════════════════════════ */
-const API_BASE_URL = "http://localhost:8000";
 
 /* ══════════════════════════════════════════════════════════
    MODULE DEFINITIONS
@@ -116,6 +114,19 @@ const MODULES = {
     colorMid: "#a78bfa55",
     tag: "YOLO · Object Detection",
     statusLabel: "VESSEL TRACKER",
+  },
+  "vessel-history": {
+    id: "vessel-history",
+    label: "Vessel Inspections",
+    title: "Vessel Inspection History",
+    description: "Search operator-verified vessel inspections, review source evidence and corrections, and open securely stored inspection images.",
+    icon: ClipboardList,
+    color: "#a78bfa",
+    lightColor: "#6d4cc7",
+    colorDim: "#a78bfa22",
+    colorMid: "#a78bfa55",
+    tag: "Verified Records",
+    statusLabel: "INSPECTION HISTORY",
   },
   radar: {
     id: "radar",
@@ -2512,7 +2523,7 @@ const generateSeaStatePDF = () => {
             <LockKeyhole size={14} />
             <div>
               <strong>READ-ONLY ACCESS</strong>
-              <span>You can review available data and history, but analysis uploads, deletes and simulation controls are blocked by the backend.</span>
+              <span>You can review available data and history, but analysis uploads, inspection creation, deletes and simulation controls are blocked by the backend.</span>
             </div>
           </div>
         )}
@@ -2523,6 +2534,8 @@ const generateSeaStatePDF = () => {
           <div className={!canWrite ? "simulation-readonly" : ""}>
             <LiveSimulation mediaFit={mediaFit} onMediaFitChange={setMediaFit} />
           </div>
+        ) : activeModule === "vessel-history" ? (
+          <VesselInspectionHistory />
         ) : (
           <>
         {activeModule === "boat" && (
@@ -2744,6 +2757,14 @@ const generateSeaStatePDF = () => {
             {renderResults()}
           </section>
         </div>
+        {activeModule === "boat" && (
+          <VesselInspectionPanel
+            file={file}
+            isVideo={isVideo}
+            prediction={result}
+            canWrite={canWrite}
+          />
+        )}
         {activeModule === "boat" && (
           <section className="a-card vessel-history-panel">
             <div className="sea-history-header">

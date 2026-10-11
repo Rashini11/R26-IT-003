@@ -80,8 +80,13 @@ from .auth import (
     router as auth_router,
     require_authenticated_request,
 )
+from .vessel_inspections import (
+    configure_database as configure_vessel_inspection_database,
+    router as vessel_inspections_router,
+)
 
 app.include_router(auth_router)
+app.include_router(vessel_inspections_router)
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
@@ -182,6 +187,7 @@ radar_prediction_collection = None
 simulation_runs_collection = None
 simulation_events_collection = None
 vessel_prediction_collection = None
+mongo_db = None
 sea_history_backend = "json"
 
 if load_dotenv is not None:
@@ -222,6 +228,8 @@ if MONGO_URI and MongoClient is not None:
         simulation_runs_collection = None
         simulation_events_collection = None
         vessel_prediction_collection = None
+
+configure_vessel_inspection_database(mongo_db)
 
 
 def _load_local_sea_history():

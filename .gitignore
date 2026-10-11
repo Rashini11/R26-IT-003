@@ -66,6 +66,8 @@ backend/.env
 
 *.key
 *.pem
+*service-account*.json
+/backend/oceaniq-511311-c4068b761f61.json
 
 
 # ============================================================

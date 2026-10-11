@@ -18,4 +18,6 @@ pytest
 httpx
 python-dotenv
 pymongo
+google-auth
+cloudinary
 pwdlib[argon2]
