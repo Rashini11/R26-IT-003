@@ -153,6 +153,25 @@ SEA_EXTERNAL_MODEL_PATH = os.path.join(
 SEA_RESEARCH_WEIGHT = 0.40
 SEA_EXTERNAL_WEIGHT = 0.60
 
+# ============================================================
+# CONFIDENCE-AWARE UNCERTAINTY
+#
+# Prediction is marked uncertain when:
+#
+# 1. Top-class confidence is below 40%, OR
+# 2. Top two classes are separated by less than
+#    10 percentage points.
+#
+# These thresholds are part of the deployment
+# decision-support layer.
+#
+# They do NOT change the trained model or the
+# official 83.89% research accuracy.
+# ============================================================
+
+SEA_UNCERTAIN_CONFIDENCE_THRESHOLD = 40.0
+SEA_UNCERTAIN_MARGIN_THRESHOLD = 10.0
+
 LABEL_MAP_PATH = os.path.join(
     BASE_DIR,
     "model",
@@ -1219,6 +1238,15 @@ def get_sea_state_recommendation(sea_state: str):
         },
     }
 
+    recommendations_map["uncertain"] = {
+        "risk_level": "Uncertain",
+        "message": (
+            "Sea-state classification is uncertain. "
+            "Manual verification or a clearer image is "
+            "recommended before making operational decisions."
+        ),
+    }
+
     return recommendations_map.get(
         _sea_state_key(sea_state),
         {
@@ -1230,6 +1258,25 @@ def get_sea_state_recommendation(sea_state: str):
 
 def get_weather_suitability(sea_state: str, confidence: float, visibility: str):
     sea_key = _sea_state_key(sea_state)
+
+    if sea_key == "uncertain":
+
+        return {
+            "condition": "Uncertain",
+
+            "score": 0,
+
+            "operations": [
+                "Manual Verification Required"
+            ],
+
+            "reason": (
+                "The AI sea-state classification is uncertain "
+                "because prediction confidence or class "
+                "separation is insufficient. Operational "
+                "suitability should be manually verified."
+            ),
+        }
 
     if sea_key == "calm":
         operations = ["Navigation", "Cargo Transport", "Fishing", "Patrol Boats"]
@@ -1294,8 +1341,22 @@ def calculate_risk_indicator(sea_state, confidence, image_quality):
         "very_rough": 95,
     }
 
-    score = base_scores.get(_sea_state_key(sea_state), 50)
+    sea_key = _sea_state_key(
+        sea_state
+    )
+
+    score = base_scores.get(
+        sea_key,
+        50,
+    )
+
     reasons = []
+
+    if sea_key == "uncertain":
+
+        reasons.append(
+            "Sea-state classification is uncertain"
+        )
 
     if confidence < 50:
         score += 20
@@ -1638,9 +1699,125 @@ async def predict_sea_state(
         )
 
         class_probabilities = {}
-        for i, prob in enumerate(probabilities[0]):
+
+        for i, prob in enumerate(
+            probabilities[0]
+        ):
+
             label = reverse_label_map[i]
-            class_probabilities[label] = round(prob.item() * 100, 2)
+
+            class_probabilities[label] = round(
+                prob.item() * 100,
+                2,
+            )
+
+
+        # =====================================================
+        # CONFIDENCE-AWARE UNCERTAINTY DECISION
+        # =====================================================
+
+        # Preserve the neural network's original
+        # highest-probability prediction.
+        model_predicted_label = (
+            predicted_label
+        )
+
+
+        # Get highest and second-highest probabilities.
+        (
+            top2_probabilities,
+            top2_indices,
+        ) = torch.topk(
+            probabilities[0],
+            k=2,
+        )
+
+
+        top1_probability_percent = round(
+            top2_probabilities[
+                0
+            ].item()
+            * 100,
+            2,
+        )
+
+
+        top2_probability_percent = round(
+            top2_probabilities[
+                1
+            ].item()
+            * 100,
+            2,
+        )
+
+
+        # Difference between the best and
+        # second-best class.
+        class_margin_percent = round(
+            top1_probability_percent
+            - top2_probability_percent,
+            2,
+        )
+
+
+        second_best_label = (
+            reverse_label_map[
+                int(
+                    top2_indices[
+                        1
+                    ].item()
+                )
+            ]
+        )
+
+
+        uncertainty_reasons = []
+
+
+        # -----------------------------------------------------
+        # RULE 1
+        # Maximum probability below 50%
+        # -----------------------------------------------------
+
+        if (
+            confidence_percent
+            < SEA_UNCERTAIN_CONFIDENCE_THRESHOLD
+        ):
+
+            uncertainty_reasons.append(
+                "Prediction confidence is below "
+                f"{SEA_UNCERTAIN_CONFIDENCE_THRESHOLD:.0f}%"
+            )
+
+
+        # -----------------------------------------------------
+        # RULE 2
+        # Top two classes too close
+        # -----------------------------------------------------
+
+        if (
+            class_margin_percent
+            < SEA_UNCERTAIN_MARGIN_THRESHOLD
+        ):
+
+            uncertainty_reasons.append(
+                "Top two sea-state classes are too close"
+            )
+
+
+        is_uncertain = bool(
+            uncertainty_reasons
+        )
+
+
+        # If either uncertainty rule is triggered,
+        # expose "uncertain" as the operational result.
+        if is_uncertain:
+
+            predicted_label = (
+                "uncertain"
+            )
+
 
         weather_suitability = get_weather_suitability(
             predicted_label,
@@ -1658,7 +1835,26 @@ async def predict_sea_state(
             quality_report["visibility_status"],
         )
 
-        processing_time = round(time.perf_counter() - start_time, 3)
+
+        if is_uncertain:
+
+            warnings.insert(
+                0,
+                (
+                    "Classification marked as uncertain. "
+                    + " ".join(
+                        uncertainty_reasons
+                    )
+                    + ". Manual verification is recommended."
+                ),
+            )
+
+
+        processing_time = round(
+            time.perf_counter()
+            - start_time,
+            3,
+        )
 
         # =====================================================
         # INDIVIDUAL MODEL DEBUG RESULTS
@@ -1717,7 +1913,45 @@ async def predict_sea_state(
             "timestamp": timestamp,
             "filename": safe_filename,
             "predicted_sea_state": predicted_label,
+
             "confidence": confidence_percent,
+
+            # Original highest-probability model prediction.
+            # This remains available even when the operational
+            # decision is marked as uncertain.
+            "model_predicted_sea_state": (
+                model_predicted_label
+            ),
+
+            "uncertainty": {
+
+                "is_uncertain":
+                    is_uncertain,
+
+                "confidence_threshold":
+                    SEA_UNCERTAIN_CONFIDENCE_THRESHOLD,
+
+                "margin_threshold":
+                    SEA_UNCERTAIN_MARGIN_THRESHOLD,
+
+                "top_prediction":
+                    model_predicted_label,
+
+                "second_prediction":
+                    second_best_label,
+
+                "top_probability":
+                    top1_probability_percent,
+
+                "second_probability":
+                    top2_probability_percent,
+
+                "class_margin":
+                    class_margin_percent,
+
+                "reasons":
+                    uncertainty_reasons,
+            },
 
             "ensemble": {
                 "enabled": ensemble_used,
