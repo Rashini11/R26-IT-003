@@ -1,11 +1,9 @@
+@import "./styles/design-system.css";
+
 html {
   min-width: 320px;
   min-height: 100%;
-  background: #010a12;
-}
-
-html[data-theme="light"] {
-  background: #eef5f8;
+  background: var(--bg);
 }
 
 body {
@@ -13,12 +11,33 @@ body {
   min-width: 320px;
   min-height: 100vh;
   min-height: 100dvh;
+  background:
+    radial-gradient(circle at 58% -10%, #153b59 0, transparent 35%),
+    var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+html[data-theme="light"] body {
+  background:
+    radial-gradient(circle at 70% -20%, rgba(102, 214, 255, 0.18) 0, transparent 40%),
+    var(--bg);
 }
 
 #root {
   width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 button,
@@ -37,6 +56,24 @@ select {
 
 img,
 svg,
-canvas {
+canvas,
+video {
   max-width: 100%;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

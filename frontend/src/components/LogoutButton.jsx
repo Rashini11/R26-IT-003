@@ -24,8 +24,8 @@ function LogoutButton() {
       title={user?.username ? `Signed in as ${user.username}` : "Sign out"}
       className="logout-btn"
     >
-      <LogOut size={13} />
-      <span>{busy ? "SIGNING OUT" : "LOGOUT"}</span>
+      <LogOut size={13} aria-hidden="true" />
+      <span>{busy ? "Signing out…" : "Sign out"}</span>
     </button>
   );
 }
