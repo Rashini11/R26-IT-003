@@ -1,0 +1,104 @@
+{
+  "model_version": "image_router_v1",
+  "classes": [
+    "radar",
+    "vessel",
+    "sea",
+    "hull",
+    "unsupported"
+  ],
+  "test_samples": 70,
+  "accuracy": 0.9285714285714286,
+  "macro_f1": 0.8283625730994151,
+  "classification_report": {
+    "radar": {
+      "precision": 0.9,
+      "recall": 1.0,
+      "f1-score": 0.9473684210526315,
+      "support": 9.0
+    },
+    "vessel": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 23.0
+    },
+    "sea": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 25.0
+    },
+    "hull": {
+      "precision": 0.6,
+      "recall": 1.0,
+      "f1-score": 0.75,
+      "support": 6.0
+    },
+    "unsupported": {
+      "precision": 1.0,
+      "recall": 0.2857142857142857,
+      "f1-score": 0.4444444444444444,
+      "support": 7.0
+    },
+    "accuracy": 0.9285714285714286,
+    "macro avg": {
+      "precision": 0.9,
+      "recall": 0.8571428571428571,
+      "f1-score": 0.8283625730994151,
+      "support": 70.0
+    },
+    "weighted avg": {
+      "precision": 0.9528571428571428,
+      "recall": 0.9285714285714286,
+      "f1-score": 0.91624895572264,
+      "support": 70.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      9,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      23,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      25,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      6,
+      0
+    ],
+    [
+      1,
+      0,
+      0,
+      4,
+      2
+    ]
+  ],
+  "manifest_sha256": "3e6e76f17c6c9f379d4dbde60f24087bac88ae4106f5ad585afa066a34bc0e11",
+  "decision_rule": "five_class_argmax",
+  "limitations": [
+    "Small development dataset.",
+    "Filename-based source groups are provisional.",
+    "Very limited unsupported examples and validation support.",
+    "Vessel examples may not represent aerial imagery.",
+    "No general open-set rejection guarantee."
+  ]
+}

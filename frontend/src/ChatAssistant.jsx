@@ -104,6 +104,10 @@ export default function ChatAssistant() {
   const { canWrite } = useAuth();
   const [messages, setMessages] = useState([]);
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
+  // OCEANIQ_IMAGE_ROUTER_V1
+  const [routingSuggestion, setRoutingSuggestion] = useState(null);
+  const [routingBusy, setRoutingBusy] = useState(false);
+
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -193,7 +197,7 @@ export default function ChatAssistant() {
       appendMessage({
         role: "assistant",
         kind: "needs_selection",
-        text: "Which analysis should run on this image? Automatic image-type recognition is not available in this version.",
+        text: "Checking the image type. Confirm the suggested analysis or choose a component manually.",
         analysisChoices: ANALYSIS_OPTIONS,
       });
     }
@@ -220,6 +224,47 @@ export default function ChatAssistant() {
     setStatusText("Conversation cleared.");
   };
 
+
+  // Obtain a suggestion for each new upload; component inference still
+  // requires an explicit user action. Ignore obsolete upload responses.
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    setRoutingSuggestion(null);
+
+    if (!file || !canWrite) {
+      setRoutingBusy(false);
+      return () => {
+        active = false;
+        controller.abort();
+      };
+    }
+
+    setRoutingBusy(true);
+    const form = new FormData();
+    form.append("file", file);
+
+    axios.post(`${API_BASE_URL}/chat/route`, form, {
+      signal: controller.signal,
+    }).then(({ data }) => {
+      if (active) setRoutingSuggestion({ ...data, sourceFile: file });
+    }).catch((error) => {
+      if (!active || error?.code === "ERR_CANCELED") return;
+      setRoutingSuggestion({
+        status: "unavailable",
+        sourceFile: file,
+        message: "Suggestion unavailable. Choose an analysis manually.",
+      });
+    }).finally(() => {
+      if (active) setRoutingBusy(false);
+    });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [file, canWrite]);
+
   const runAnalysis = async (analysisOverride = null) => {
     const analysis = analysisOverride || selectedAnalysis;
     if (!canWrite) {
@@ -243,7 +288,7 @@ export default function ChatAssistant() {
       appendMessage({
         role: "assistant",
         kind: "needs_selection",
-        text: "Select an analysis type before submission. Automatic routing is unavailable.",
+        text: "Confirm the suggested component or select an analysis type before submission.",
         analysisChoices: ANALYSIS_OPTIONS,
       });
       return;
@@ -639,6 +684,48 @@ export default function ChatAssistant() {
         </section>
 
         <aside className="chat-side-panel">
+            <section className="chat-side-card" aria-label="Image-type suggestion">
+              <div className="chat-card-head">
+                <h3>Automatic suggestion</h3>
+                <span className="eyebrow">Experimental</span>
+              </div>
+              <div className="chat-card-body" aria-live="polite">
+                {routingBusy ? (
+                  <p>Checking image type…</p>
+                ) : routingSuggestion?.sourceFile === file ? (
+                  <>
+                    <p>{routingSuggestion.message}</p>
+                    {typeof routingSuggestion.score === "number" && (
+                      <p className="chat-note">
+                        Image-type model score: {routingSuggestion.score}%.
+                        This is not a guarantee of correctness.
+                      </p>
+                    )}
+                    {routingSuggestion.suggested_component && (
+                      <button
+                        type="button"
+                        className="chat-btn primary"
+                        disabled={busy || !canWrite || !file}
+                        onClick={() => {
+                          const component = routingSuggestion.suggested_component;
+                          setSelectedAnalysis(component);
+                          runAnalysis(component);
+                        }}
+                      >
+                        Confirm {routingSuggestion.label} and analyse
+                      </button>
+                    )}
+                    <p className="chat-note">
+                      You can choose any analysis manually below.
+                      Unsupported-image detection is limited.
+                    </p>
+                  </>
+                ) : (
+                  <p>Upload an image to receive an analysis suggestion.</p>
+                )}
+              </div>
+            </section>
+
           <section className="chat-side-card">
             <div className="chat-card-head">
               <h3>Choose a lens</h3>
@@ -662,7 +749,7 @@ export default function ChatAssistant() {
               <p className="chat-hint-note">
                 {selectedMeta
                   ? `${selectedMeta.label} selected. Add an image, then run analysis.`
-                  : "Select a lens to prepare the analysis pipeline. Automatic routing is unavailable."}
+                  : "Upload an image for a suggestion, or select an analysis manually."}
               </p>
             </div>
           </section>
