@@ -6,6 +6,7 @@ import tempfile
 import traceback
 import uuid
 import subprocess
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from datetime import datetime
@@ -147,6 +148,37 @@ SEA_MODEL_PATH = os.path.join(
     "model",
     "image_only_model.pth",
 )
+
+SEA_EXTERNAL_MODEL_PATH = os.path.join(
+    BASE_DIR,
+    "model",
+    "image_only_model_demo_55_frozen_backup.pth",
+)
+
+# Ensemble weighting:
+# Research model keeps 40% influence.
+# External-adapted model gets 60% for web-image robustness.
+SEA_RESEARCH_WEIGHT = 0.40
+SEA_EXTERNAL_WEIGHT = 0.60
+
+# ============================================================
+# CONFIDENCE-AWARE UNCERTAINTY
+#
+# Prediction is marked uncertain when:
+#
+# 1. Top-class confidence is below 40%, OR
+# 2. Top two classes are separated by less than
+#    10 percentage points.
+#
+# These thresholds are part of the deployment
+# decision-support layer.
+#
+# They do NOT change the trained model or the
+# official 83.89% research accuracy.
+# ============================================================
+
+SEA_UNCERTAIN_CONFIDENCE_THRESHOLD = 40.0
+SEA_UNCERTAIN_MARGIN_THRESHOLD = 10.0
 
 LABEL_MAP_PATH = os.path.join(
     BASE_DIR,
@@ -767,10 +799,13 @@ def make_gradcam_heatmap(
     return heatmap.numpy()
 
 
-@app.post("/predict-hull-defect", dependencies=[Depends(require_authenticated_request)])
-async def predict_hull_defect(
-    file: UploadFile = File(...),
+def run_hull_defect_analysis(
+    image_bytes,
+    filename="upload.jpg",
+    persist=True,
+    source="manual_upload",
 ):
+    """Shared hull inference used by the manual endpoint and Chat Assistant."""
     if hull_model is None:
         return {
             "error": (
@@ -779,7 +814,7 @@ async def predict_hull_defect(
         }
 
     try:
-        contents = await file.read()
+        contents = image_bytes
 
         nparr = np.frombuffer(
             contents,
@@ -1105,7 +1140,7 @@ async def predict_hull_defect(
         "timestamp": datetime.now().strftime(
             "%Y-%m-%d %H:%M:%S"
         ),
-        "filename": file.filename,
+        "filename": filename,
         "prediction": prediction,
         "confidence": confidence,
         "detected_defects": reported_defects,
@@ -1113,9 +1148,11 @@ async def predict_hull_defect(
         "recommendation": recommendation,
         "severity": severity,
         "warning": warning,
+        "source": source,
     }
 
-        save_hull_prediction_record(hull_record)
+        if persist:
+            save_hull_prediction_record(hull_record)
 
         return {
             "prediction": prediction,
@@ -1140,10 +1177,26 @@ async def predict_hull_defect(
         }
 
 
+@app.post("/predict-hull-defect", dependencies=[Depends(require_authenticated_request)])
+async def predict_hull_defect(
+    file: UploadFile = File(...),
+):
+    contents = await file.read()
+    return await asyncio.to_thread(
+        run_hull_defect_analysis,
+        contents,
+        file.filename or "upload.jpg",
+        True,
+        "manual_upload",
+    )
+
+
 # =====================================================
 # SEA STATE MODEL - PYTORCH
 # =====================================================
 sea_model = None
+sea_external_model = None
+
 label_map = {}
 reverse_label_map = {}
 
@@ -1198,13 +1251,13 @@ class ImageOnlyMobileNet(nn.Module):
 
 try:
     if (
-        os.path.exists(
-            SEA_MODEL_PATH
-        )
-        and os.path.exists(
-            LABEL_MAP_PATH
-        )
+        os.path.exists(SEA_MODEL_PATH)
+        and os.path.exists(LABEL_MAP_PATH)
     ):
+        # ============================================
+        # LOAD LABEL MAP
+        # ============================================
+
         with open(
             LABEL_MAP_PATH,
             "r",
@@ -1217,19 +1270,18 @@ try:
             in label_map.items()
         }
 
+        # ============================================
+        # MODEL 1 — RESEARCH MODEL
+        # ============================================
+
         print(
-            "Loading sea-state "
-            "model from:",
+            "Loading research sea-state model from:",
             SEA_MODEL_PATH,
         )
 
-        sea_model = (
-            ImageOnlyMobileNet(
-                num_classes=len(
-                    label_map
-                )
-            ).to(device)
-        )
+        sea_model = ImageOnlyMobileNet(
+            num_classes=len(label_map)
+        ).to(device)
 
         sea_model.load_state_dict(
             torch.load(
@@ -1242,23 +1294,76 @@ try:
         sea_model.eval()
 
         print(
-            "Sea-state model "
-            "loaded successfully"
+            "Research sea-state model loaded successfully"
         )
+
+        # ============================================
+        # MODEL 2 — EXTERNAL / WEB-ADAPTED MODEL
+        # ============================================
+
+        if os.path.exists(
+            SEA_EXTERNAL_MODEL_PATH
+        ):
+            print(
+                "Loading external sea-state model from:",
+                SEA_EXTERNAL_MODEL_PATH,
+            )
+
+            sea_external_model = (
+                ImageOnlyMobileNet(
+                    num_classes=len(
+                        label_map
+                    )
+                ).to(device)
+            )
+
+            sea_external_model.load_state_dict(
+                torch.load(
+                    SEA_EXTERNAL_MODEL_PATH,
+                    map_location=device,
+                    weights_only=True,
+                )
+            )
+
+            sea_external_model.eval()
+
+            print(
+                "External sea-state model loaded successfully"
+            )
+
+            print(
+                "Sea-state ensemble enabled:",
+                f"research={SEA_RESEARCH_WEIGHT}",
+                f"external={SEA_EXTERNAL_WEIGHT}",
+            )
+
+        else:
+            print(
+                "WARNING: External sea-state model not found."
+            )
+
+            print(
+                "Falling back to research model only."
+            )
+
+            sea_external_model = None
 
     else:
         print(
-            "WARNING: Sea-state model "
+            "WARNING: Sea-state research model "
             "or label map not found"
         )
 
 except Exception as e:
     print(
-        "ERROR loading "
-        "sea-state model:",
+        "ERROR loading sea-state models:",
         e,
     )
+
+    traceback.print_exc()
+
     sea_model = None
+    sea_external_model = None
 
 
 # =====================================================
@@ -1416,6 +1521,15 @@ def get_sea_state_recommendation(sea_state: str):
         },
     }
 
+    recommendations_map["uncertain"] = {
+        "risk_level": "Uncertain",
+        "message": (
+            "Sea-state classification is uncertain. "
+            "Manual verification or a clearer image is "
+            "recommended before making operational decisions."
+        ),
+    }
+
     return recommendations_map.get(
         _sea_state_key(sea_state),
         {
@@ -1427,6 +1541,25 @@ def get_sea_state_recommendation(sea_state: str):
 
 def get_weather_suitability(sea_state: str, confidence: float, visibility: str):
     sea_key = _sea_state_key(sea_state)
+
+    if sea_key == "uncertain":
+
+        return {
+            "condition": "Uncertain",
+
+            "score": 0,
+
+            "operations": [
+                "Manual Verification Required"
+            ],
+
+            "reason": (
+                "The AI sea-state classification is uncertain "
+                "because prediction confidence or class "
+                "separation is insufficient. Operational "
+                "suitability should be manually verified."
+            ),
+        }
 
     if sea_key == "calm":
         operations = ["Navigation", "Cargo Transport", "Fishing", "Patrol Boats"]
@@ -1491,8 +1624,22 @@ def calculate_risk_indicator(sea_state, confidence, image_quality):
         "very_rough": 95,
     }
 
-    score = base_scores.get(_sea_state_key(sea_state), 50)
+    sea_key = _sea_state_key(
+        sea_state
+    )
+
+    score = base_scores.get(
+        sea_key,
+        50,
+    )
+
     reasons = []
+
+    if sea_key == "uncertain":
+
+        reasons.append(
+            "Sea-state classification is uncertain"
+        )
 
     if confidence < 50:
         score += 20
@@ -1711,25 +1858,24 @@ def clear_hull_prediction_history():
     }
 
 
-@app.post("/predict-sea-state", dependencies=[Depends(require_authenticated_request)])
-async def predict_sea_state(
-    file: UploadFile = File(...),
-    apply_enhancement: bool = Form(False),
+def run_sea_state_analysis(
+    image_path,
+    filename="sea_image.jpg",
+    apply_enhancement=False,
+    persist=True,
+    source="manual_upload",
 ):
+    """Shared sea-state inference used by the manual endpoint and Chat Assistant."""
     if sea_model is None:
         return {"error": "Sea-state model not loaded"}
 
     try:
         start_time = time.perf_counter()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        safe_filename = Path(filename or "sea_image").name
+        path = Path(image_path)
 
-        safe_filename = Path(file.filename or "sea_image").name
-        file_path = os.path.join(UPLOAD_DIR, safe_filename)
-
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        original_image = Image.open(file_path).convert("RGB")
+        original_image = Image.open(path).convert("RGB")
 
         validation = validate_sea_image(original_image)
         if not validation["is_valid"]:
@@ -1749,19 +1895,211 @@ async def predict_sea_state(
 
         image = sea_transform(prediction_image).unsqueeze(0).to(device)
 
+        # =====================================================
+        # SEA-STATE ENSEMBLE INFERENCE
+        # =====================================================
+
         with torch.no_grad():
-            output = sea_model(image)
-            probabilities = torch.softmax(output, dim=1)
-            confidence, predicted_class = torch.max(probabilities, 1)
+
+            # -----------------------------------------------
+            # MODEL 1 - RESEARCH MODEL
+            # -----------------------------------------------
+            research_output = sea_model(image)
+
+            research_probabilities = torch.softmax(
+                research_output,
+                dim=1,
+            )
+
+            (
+                research_confidence,
+                research_class,
+            ) = torch.max(
+                research_probabilities,
+                dim=1,
+            )
+
+            # -----------------------------------------------
+            # MODEL 2 - EXTERNAL / WEB-ADAPTED MODEL
+            # -----------------------------------------------
+            if sea_external_model is not None:
+
+                external_output = sea_external_model(image)
+
+                external_probabilities = torch.softmax(
+                    external_output,
+                    dim=1,
+                )
+
+                (
+                    external_confidence,
+                    external_class,
+                ) = torch.max(
+                    external_probabilities,
+                    dim=1,
+                )
+
+                # -------------------------------------------
+                # WEIGHTED PROBABILITY ENSEMBLE
+                # -------------------------------------------
+                probabilities = (
+                    SEA_RESEARCH_WEIGHT
+                    * research_probabilities
+                    +
+                    SEA_EXTERNAL_WEIGHT
+                    * external_probabilities
+                )
+
+                ensemble_used = True
+
+            else:
+
+                probabilities = research_probabilities
+
+                external_confidence = None
+                external_class = None
+
+                ensemble_used = False
+
+            (
+                confidence,
+                predicted_class,
+            ) = torch.max(
+                probabilities,
+                dim=1,
+            )
 
         predicted_class = predicted_class.item()
-        predicted_label = reverse_label_map[predicted_class]
-        confidence_percent = round(confidence.item() * 100, 2)
+
+        predicted_label = reverse_label_map[
+            predicted_class
+        ]
+
+        confidence_percent = round(
+            confidence.item() * 100,
+            2,
+        )
 
         class_probabilities = {}
-        for i, prob in enumerate(probabilities[0]):
+
+        for i, prob in enumerate(
+            probabilities[0]
+        ):
+
             label = reverse_label_map[i]
-            class_probabilities[label] = round(prob.item() * 100, 2)
+
+            class_probabilities[label] = round(
+                prob.item() * 100,
+                2,
+            )
+
+
+        # =====================================================
+        # CONFIDENCE-AWARE UNCERTAINTY DECISION
+        # =====================================================
+
+        # Preserve the neural network's original
+        # highest-probability prediction.
+        model_predicted_label = (
+            predicted_label
+        )
+
+
+        # Get highest and second-highest probabilities.
+        (
+            top2_probabilities,
+            top2_indices,
+        ) = torch.topk(
+            probabilities[0],
+            k=2,
+        )
+
+
+        top1_probability_percent = round(
+            top2_probabilities[
+                0
+            ].item()
+            * 100,
+            2,
+        )
+
+
+        top2_probability_percent = round(
+            top2_probabilities[
+                1
+            ].item()
+            * 100,
+            2,
+        )
+
+
+        # Difference between the best and
+        # second-best class.
+        class_margin_percent = round(
+            top1_probability_percent
+            - top2_probability_percent,
+            2,
+        )
+
+
+        second_best_label = (
+            reverse_label_map[
+                int(
+                    top2_indices[
+                        1
+                    ].item()
+                )
+            ]
+        )
+
+
+        uncertainty_reasons = []
+
+
+        # -----------------------------------------------------
+        # RULE 1
+        # Maximum probability below 50%
+        # -----------------------------------------------------
+
+        if (
+            confidence_percent
+            < SEA_UNCERTAIN_CONFIDENCE_THRESHOLD
+        ):
+
+            uncertainty_reasons.append(
+                "Prediction confidence is below "
+                f"{SEA_UNCERTAIN_CONFIDENCE_THRESHOLD:.0f}%"
+            )
+
+
+        # -----------------------------------------------------
+        # RULE 2
+        # Top two classes too close
+        # -----------------------------------------------------
+
+        if (
+            class_margin_percent
+            < SEA_UNCERTAIN_MARGIN_THRESHOLD
+        ):
+
+            uncertainty_reasons.append(
+                "Top two sea-state classes are too close"
+            )
+
+
+        is_uncertain = bool(
+            uncertainty_reasons
+        )
+
+
+        # If either uncertainty rule is triggered,
+        # expose "uncertain" as the operational result.
+        if is_uncertain:
+
+            predicted_label = (
+                "uncertain"
+            )
+
 
         weather_suitability = get_weather_suitability(
             predicted_label,
@@ -1779,13 +2117,151 @@ async def predict_sea_state(
             quality_report["visibility_status"],
         )
 
-        processing_time = round(time.perf_counter() - start_time, 3)
+
+        if is_uncertain:
+
+            warnings.insert(
+                0,
+                (
+                    "Classification marked as uncertain. "
+                    + " ".join(
+                        uncertainty_reasons
+                    )
+                    + ". Manual verification is recommended."
+                ),
+            )
+
+
+        processing_time = round(
+            time.perf_counter()
+            - start_time,
+            3,
+        )
+
+        # =====================================================
+        # INDIVIDUAL MODEL DEBUG RESULTS
+        # =====================================================
+
+        research_class_index = int(
+            research_class.item()
+        )
+
+        research_prediction = reverse_label_map[
+            research_class_index
+        ]
+
+        research_confidence_percent = round(
+            research_confidence.item() * 100,
+            2,
+        )
+
+        if (
+            sea_external_model is not None
+            and external_class is not None
+        ):
+
+            external_class_index = int(
+                external_class.item()
+            )
+
+            external_prediction = reverse_label_map[
+                external_class_index
+            ]
+
+            external_confidence_percent = round(
+                external_confidence.item() * 100,
+                2,
+            )
+
+        else:
+
+            external_prediction = None
+            external_confidence_percent = None
+
+        print(
+            "SEA ENSEMBLE:",
+            "research=",
+            research_prediction,
+            research_confidence_percent,
+            "| external=",
+            external_prediction,
+            external_confidence_percent,
+            "| final=",
+            predicted_label,
+            confidence_percent,
+        )
 
         result = {
             "timestamp": timestamp,
             "filename": safe_filename,
             "predicted_sea_state": predicted_label,
+
             "confidence": confidence_percent,
+
+            # Original highest-probability model prediction.
+            # This remains available even when the operational
+            # decision is marked as uncertain.
+            "model_predicted_sea_state": (
+                model_predicted_label
+            ),
+
+            "uncertainty": {
+
+                "is_uncertain":
+                    is_uncertain,
+
+                "confidence_threshold":
+                    SEA_UNCERTAIN_CONFIDENCE_THRESHOLD,
+
+                "margin_threshold":
+                    SEA_UNCERTAIN_MARGIN_THRESHOLD,
+
+                "top_prediction":
+                    model_predicted_label,
+
+                "second_prediction":
+                    second_best_label,
+
+                "top_probability":
+                    top1_probability_percent,
+
+                "second_probability":
+                    top2_probability_percent,
+
+                "class_margin":
+                    class_margin_percent,
+
+                "reasons":
+                    uncertainty_reasons,
+            },
+
+            "ensemble": {
+                "enabled": ensemble_used,
+
+                "research_model": {
+                    "prediction": research_prediction,
+                    "confidence": research_confidence_percent,
+                    "weight": SEA_RESEARCH_WEIGHT,
+                },
+
+                "external_model": {
+                    "prediction": external_prediction,
+                    "confidence": external_confidence_percent,
+                    "weight": (
+                        SEA_EXTERNAL_WEIGHT
+                        if ensemble_used
+                        else 0
+                    ),
+                },
+
+                "models_agree": (
+                    research_prediction
+                    == external_prediction
+                    if ensemble_used
+                    else True
+                ),
+            },
+
             "validation": validation,
             "processing_time": processing_time,
             "probabilities": class_probabilities,
@@ -1795,11 +2271,39 @@ async def predict_sea_state(
             "weather_suitability": weather_suitability,
             "risk_indicator": risk_indicator,
             "warnings": warnings,
+            "source": source,
         }
 
-        save_sea_history_record(result)
+        if persist:
+            save_sea_history_record(result)
         return result
 
+    except Exception as e:
+        traceback.print_exc()
+        return {"error": f"Sea-state prediction failed: {str(e)}"}
+
+
+@app.post("/predict-sea-state", dependencies=[Depends(require_authenticated_request)])
+async def predict_sea_state(
+    file: UploadFile = File(...),
+    apply_enhancement: bool = Form(False),
+):
+    if sea_model is None:
+        return {"error": "Sea-state model not loaded"}
+
+    safe_filename = Path(file.filename or "sea_image").name
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        return await asyncio.to_thread(
+            run_sea_state_analysis,
+            file_path,
+            safe_filename,
+            apply_enhancement,
+            True,
+            "manual_upload",
+        )
     except Exception as e:
         traceback.print_exc()
         return {"error": f"Sea-state prediction failed: {str(e)}"}
@@ -1972,10 +2476,45 @@ async def get_demo_boat_detection():
     return build_demo_boat_detection_response()
 
 
-@app.post("/predict-boat-detection", dependencies=[Depends(require_authenticated_request)])
-async def predict_boat_detection(
-    file: UploadFile = File(...),
+def _annotate_vessel_detections(image_path, detections):
+    """Draw real detection boxes; returns JPEG base64 or None."""
+    image = cv2.imread(str(image_path))
+    if image is None or not detections:
+        return None
+
+    for detection in detections:
+        box = detection.get("box")
+        if not box or len(box) != 4:
+            continue
+        x1, y1, x2, y2 = [int(v) for v in box]
+        color = (0, 165, 255) if detection.get("detection_type") == "flag" else (0, 220, 80)
+        cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
+        label = f"{detection.get('label', '')} {detection.get('confidence', '')}%"
+        cv2.putText(
+            image,
+            label,
+            (x1, max(20, y1 - 8)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            color,
+            2,
+            cv2.LINE_AA,
+        )
+
+    ok, buffer = cv2.imencode(".jpg", image)
+    if not ok:
+        return None
+    return base64.b64encode(buffer).decode("utf-8")
+
+
+def run_boat_detection_analysis(
+    image_path,
+    filename="vessel.jpg",
+    persist=True,
+    source="manual_upload",
+    include_annotation=False,
 ):
+    """Shared vessel detection used by the manual endpoint and Chat Assistant."""
     if boat_model is None:
         return {
             "error": (
@@ -1983,45 +2522,22 @@ async def predict_boat_detection(
                 "not loaded"
             )
         }
-    
+
     try:
-        if not file.filename:
-            return {
-                "error": "No filename"
-            }
+        if not filename:
+            return {"error": "No filename"}
 
-        filename_lower = (
-            file.filename.lower()
-        )
-
+        filename_lower = filename.lower()
         if not filename_lower.endswith(
-            (
-                ".png",
-                ".jpg",
-                ".jpeg",
-                ".bmp",
-            )
+            (".png", ".jpg", ".jpeg", ".bmp", ".webp")
         ):
             return {
-                "error": (
-                    "Invalid file type: "
-                    f"{filename_lower}"
-                )
+                "error": f"Invalid file type: {filename_lower}"
             }
 
-        with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".png",
-        ) as tmp:
-            contents = (
-                await file.read()
-            )
-
-            tmp.write(contents)
-            tmp_path = tmp.name
-
+        path = Path(image_path)
         results = boat_model(
-            tmp_path,
+            str(path),
             conf=0.50,
             iou=0.45,
             save=False,
@@ -2029,67 +2545,35 @@ async def predict_boat_detection(
         )
 
         detections = []
-
-        if (
-            results
-            and len(results) > 0
-        ):
+        if results and len(results) > 0:
             result = results[0]
-
-            if (
-                result.boxes is not None
-                and len(
-                    result.boxes
-                ) > 0
-            ):
+            if result.boxes is not None and len(result.boxes) > 0:
                 for box in result.boxes:
                     try:
                         cls_id = (
-                            int(
-                                box.cls.item()
-                            )
-                            if box.cls
-                            is not None
+                            int(box.cls.item())
+                            if box.cls is not None
                             else 0
                         )
-
                         conf = (
-                            float(
-                                box.conf.item()
-                            )
-                            if box.conf
-                            is not None
+                            float(box.conf.item())
+                            if box.conf is not None
                             else 0
                         )
-
                         if conf < 0.50:
                             continue
-
-                        label = (
-                            boat_model.names.get(
-                                cls_id,
-                                f"class_{cls_id}",
-                            )
+                        label = boat_model.names.get(
+                            cls_id,
+                            f"class_{cls_id}",
                         )
-
                         detections.append({
                             "class_id": cls_id,
                             "label": label,
                             "confidence": round(conf * 100, 1),
                             "box": [float(value) for value in box.xyxy[0].tolist()],
                         })
-
                     except Exception as e:
-                        print(
-                            "Error parsing box:",
-                            e,
-                        )
-
-        Path(
-            tmp_path
-        ).unlink(
-            missing_ok=True
-        )
+                        print("Error parsing box:", e)
 
         flag_boxes = [
             detection["box"]
@@ -2100,6 +2584,7 @@ async def predict_boat_detection(
         if results and len(results) > 0 and results[0].orig_shape:
             image_height, image_width = results[0].orig_shape[:2]
             image_size = [int(image_width), int(image_height)]
+
         vessel_detections = []
         flag_detections = []
         for detection in detections:
@@ -2142,11 +2627,13 @@ async def predict_boat_detection(
             reverse=True,
         )[:1]
         all_detections = vessel_detections + flag_detections
-
-        confidence_value = round(max((d["confidence"] for d in vessel_detections), default=0), 1)
+        confidence_value = round(
+            max((d["confidence"] for d in vessel_detections), default=0),
+            1,
+        )
 
         response = {
-            "image": file.filename,
+            "image": filename,
             "status": "Detected" if all_detections else "No Vessel Detected",
             "confidence": confidence_value,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -2158,27 +2645,77 @@ async def predict_boat_detection(
             "image_size": image_size,
             "demo": False,
         }
-        save_vessel_prediction_record({
-            **response,
-            "module": "vessel",
-            "mode": "image",
-        })
+
+        if include_annotation:
+            response["annotated_image"] = _annotate_vessel_detections(
+                path,
+                all_detections,
+            )
+
+        if persist:
+            record = {
+                key: value
+                for key, value in response.items()
+                if key != "annotated_image"
+            }
+            record.update({
+                "module": "vessel",
+                "mode": "image",
+                "request_source": source,
+            })
+            save_vessel_prediction_record(record)
         return response
 
     except Exception as e:
-        print(
-            "ERROR:",
-            e,
-        )
-
+        print("ERROR:", e)
         traceback.print_exc()
+        return {"error": f"Inference failed: {str(e)}"}
 
+
+@app.post("/predict-boat-detection", dependencies=[Depends(require_authenticated_request)])
+async def predict_boat_detection(
+    file: UploadFile = File(...),
+):
+    if boat_model is None:
         return {
             "error": (
-                "Inference failed: "
-                f"{str(e)}"
+                "Boat detection model "
+                "not loaded"
             )
         }
+
+    if not file.filename:
+        return {"error": "No filename"}
+
+    filename_lower = file.filename.lower()
+    if not filename_lower.endswith(
+        (".png", ".jpg", ".jpeg", ".bmp")
+    ):
+        return {
+            "error": f"Invalid file type: {filename_lower}"
+        }
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=".png",
+        ) as tmp:
+            contents = await file.read()
+            tmp.write(contents)
+            tmp_path = tmp.name
+
+        return await asyncio.to_thread(
+            run_boat_detection_analysis,
+            tmp_path,
+            file.filename,
+            True,
+            "manual_upload",
+            False,
+        )
+    finally:
+        if tmp_path is not None:
+            Path(tmp_path).unlink(missing_ok=True)
 
 
 @app.post("/predict-boat-video", dependencies=[Depends(require_authenticated_request)])
@@ -2691,6 +3228,54 @@ def classify_radar_image_path(
     }
 
 
+def run_radar_object_analysis(
+    image_path,
+    display_name=None,
+    persist=True,
+    source="manual_upload",
+):
+    """Shared radar inference used by the manual endpoint and Chat Assistant."""
+    result = classify_radar_image_path(
+        image_path,
+        display_name=display_name,
+    )
+
+    if persist and radar_prediction_collection is not None:
+        try:
+            from datetime import datetime, timezone
+
+            safe_filename = Path(
+                display_name or Path(image_path).name
+            ).name
+            radar_record = {
+                "timestamp": datetime.now(timezone.utc),
+                "source": source,
+                "filename": safe_filename,
+                "model_name": result.get("model_name"),
+                "model_version": result.get("model_version"),
+                "binary_prediction": result.get("binary_prediction"),
+                "final_prediction": result.get("final_prediction"),
+                "confidence": result.get("confidence"),
+                "bird_probability": result.get("bird_probability"),
+                "ship_probability": result.get("ship_probability"),
+                "unknown_probability": result.get("unknown_probability"),
+                "decision_status": result.get("decision_status"),
+                "validation_accuracy": result.get("validation_accuracy"),
+                "test_accuracy": result.get("model_accuracy"),
+                "macro_f1": result.get("macro_f1"),
+            }
+            insert_result = radar_prediction_collection.insert_one(
+                radar_record
+            )
+            result["database_record_id"] = str(
+                insert_result.inserted_id
+            )
+        except Exception as db_error:
+            print("Radar MongoDB save failed:", db_error)
+
+    return result
+
+
 @app.post(
     "/predict-radar-object",
     dependencies=[
@@ -2740,83 +3325,13 @@ async def predict_radar_object(
                 buffer,
             )
 
-        result = classify_radar_image_path(
+        return await asyncio.to_thread(
+            run_radar_object_analysis,
             raw_path,
-            display_name=file.filename,
+            file.filename,
+            True,
+            "manual_upload",
         )
-
-        # -------------------------------------------------
-        # RADAR PREDICTION PERSISTENCE
-        # MongoDB failure must never break inference.
-        # -------------------------------------------------
-        if radar_prediction_collection is not None:
-            try:
-                from datetime import datetime, timezone
-
-                radar_record = {
-                    "timestamp": datetime.now(
-                        timezone.utc
-                    ),
-                    "source": "manual_upload",
-                    "filename": safe_filename,
-                    "model_name": result.get(
-                        "model_name"
-                    ),
-                    "model_version": result.get(
-                        "model_version"
-                    ),
-                    "binary_prediction": result.get(
-                        "binary_prediction"
-                    ),
-                    "final_prediction": result.get(
-                        "final_prediction"
-                    ),
-                    "confidence": result.get(
-                        "confidence"
-                    ),
-                    "bird_probability": result.get(
-                        "bird_probability"
-                    ),
-                    "ship_probability": result.get(
-                        "ship_probability"
-                    ),
-                    "unknown_probability": result.get(
-                        "unknown_probability"
-                    ),
-                    "decision_status": result.get(
-                        "decision_status"
-                    ),
-                    "validation_accuracy": result.get(
-                        "validation_accuracy"
-                    ),
-                    "test_accuracy": result.get(
-                        "model_accuracy"
-                    ),
-                    "macro_f1": result.get(
-                        "macro_f1"
-                    ),
-                }
-
-                insert_result = (
-                    radar_prediction_collection
-                    .insert_one(
-                        radar_record
-                    )
-                )
-
-                result[
-                    "database_record_id"
-                ] = str(
-                    insert_result.inserted_id
-                )
-
-            except Exception as db_error:
-                print(
-                    "Radar MongoDB save failed:",
-                    db_error,
-                )
-
-        return result
 
     except Exception as e:
         print(
@@ -2919,6 +3434,18 @@ configure_internal_radar_classifier(
     classify_radar_image_path
 )
 
+from .chatbot.runners import register_component_runners
+from .chatbot.router import router as chatbot_router
+
+register_component_runners(
+    radar=run_radar_object_analysis,
+    vessel=run_boat_detection_analysis,
+    sea=run_sea_state_analysis,
+    hull=run_hull_defect_analysis,
+)
+
+app.include_router(chatbot_router)
+
 
 # =====================================================
 # SIMULATION / AIS / GRU / COLLISION-RISK ROUTER
@@ -2970,18 +3497,15 @@ def health():
             "boat_model_loaded": (
                 boat_model is not None
             ),
-            "radar_yolo_loaded": (
-                radar_yolo_model
-                is not None
-            ),
             "radar_cnn_loaded": (
-                radar_cnn_model
-                is not None
+                radar_model is not None
             ),
+            "radar_model_version": RADAR_MODEL_VERSION,
         },
         "simulation_health": (
             "/simulation/health"
         ),
+        "chat_assistant": "/chat/welcome",
     }
 
 
@@ -3041,6 +3565,9 @@ def home():
             "collision_risk": (
                 "/predict-collision-risk"
             ),
+            "chat_welcome": "/chat/welcome",
+            "chat_analyze": "/chat/analyze",
+            "chat_follow_up": "/chat/follow-up",
         },
     }
 

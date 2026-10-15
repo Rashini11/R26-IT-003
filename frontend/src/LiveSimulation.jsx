@@ -716,15 +716,7 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
             </option>
 
             <option value="all">
-              All classes
-            </option>
-
-            <option value="bird">
-              Bird images
-            </option>
-
-            <option value="unknown">
-              Unknown images
+              All available ship folders
             </option>
           </select>
         </label>
