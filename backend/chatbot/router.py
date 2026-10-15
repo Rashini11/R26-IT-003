@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
-from ..auth import require_authenticated_request
+from auth import require_authenticated_request
 from .image_utils import validate_image_bytes
 from .intents import DEFAULT_ACTIONS, match_intent, unsupported_text_message
 from .routing import DEFAULT_ROUTER, SUPPORTED_COMPONENTS

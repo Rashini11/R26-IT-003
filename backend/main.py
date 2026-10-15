@@ -1158,6 +1158,8 @@ def run_hull_defect_analysis(
             "prediction": prediction,
             "confidence": round(confidence * 100, 2),
             "valid_hull_image": True,
+            "hull_validation": hull_validation,
+            "validation": validation,
             "detected_defects": detected_defects,
             "multiple_defects": multiple_defects,
             "recommendation": recommendation,
@@ -3434,8 +3436,8 @@ configure_internal_radar_classifier(
     classify_radar_image_path
 )
 
-from .chatbot.runners import register_component_runners
-from .chatbot.router import router as chatbot_router
+from chatbot.runners import register_component_runners
+from chatbot.router import router as chatbot_router
 
 register_component_runners(
     radar=run_radar_object_analysis,
