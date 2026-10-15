@@ -23,7 +23,6 @@ import {
   Upload,
   Activity,
   Cpu,
-  Shield,
   Eye,
   EyeOff,
   AlertTriangle,
@@ -41,8 +40,12 @@ import {
   Navigation,
   UserRoundCog,
   LockKeyhole,
+  MessageSquare,
+  Home,
 } from "lucide-react";
 import LiveSimulation from "./LiveSimulation";
+import ChatAssistant from "./ChatAssistant";
+import HomePage from "./HomePage";
 
 import DatabaseViewer from "./DatabaseViewer";
 
@@ -67,7 +70,7 @@ import "./App.css";
    BACKEND CONFIGURATION — do not modify endpoint names
    ══════════════════════════════════════════════════════════ */
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? "" : "http://localhost:8000");
   
 /* ══════════════════════════════════════════════════════════
    MODULE DEFINITIONS
@@ -75,90 +78,119 @@ const API_BASE_URL =
    color identity used throughout the UI.
    ══════════════════════════════════════════════════════════ */
 const MODULES = {
+  home: {
+    id: "home",
+    label: "Home",
+    title: "Home",
+    endpoint: null,
+    description:
+      "Welcome to OceanIQ — a research decision-support workspace for maritime image analysis and vessel-motion interpretation.",
+    icon: Home,
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
+    tag: "Workspace overview",
+    statusLabel: "Overview",
+  },
   hull: {
     id: "hull",
-    label: "Hull Defect",
-    title: "Hull Defect Detection",
+    label: "Hull Condition",
+    title: "Hull Condition",
     endpoint: `${API_BASE_URL}/predict-hull-defect`,
-    description: "CNN-based detection of corrosion, cracks, and biofouling, and paint damage with Grad-CAM explainability.",
+    description: "Assess underwater hull imagery for corrosion, cracks, biofouling and paint damage, with Grad-CAM highlighting influential regions.",
     icon: Anchor,
-    color: "#00d4ff",
-    lightColor: "#007fa5",
-    colorDim: "#00d4ff22",
-    colorMid: "#00d4ff55",
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
     tag: "CNN · Grad-CAM",
-    statusLabel: "HULL SCANNER",
+    statusLabel: "Hull intake",
   },
   sea: {
     id: "sea",
     label: "Sea State",
-    title: "Sea State Classification",
+    title: "Sea State",
     endpoint: `${API_BASE_URL}/predict-sea-state`,
-    description: "Multi-class deep learning model classifying sea surface conditions from imagery.",
+    description: "Classify sea-surface conditions (calm, moderate, rough, very_rough) from imagery, with validation and decision-support notes.",
     icon: Waves,
-    color: "#00ffb3",
-    lightColor: "#008f6a",
-    colorDim: "#00ffb322",
-    colorMid: "#00ffb355",
+    color: "#72e5b1",
+    lightColor: "#1f9d6e",
+    colorDim: "#72e5b122",
+    colorMid: "#72e5b155",
     tag: "Multi-class CNN",
-    statusLabel: "SEA ANALYZER",
+    statusLabel: "Sea intake",
   },
   boat: {
     id: "boat",
     label: "Vessel Detection",
     title: "Vessel Detection",
     endpoint: `${API_BASE_URL}/predict-boat-detection`,
-    description: "YOLO-based real-time object detection for maritime vessel identification.",
+    description: "Detect boats and ships in drone imagery, including local/foreign cues from Sri Lankan flag associations when present.",
     icon: Ship,
-    color: "#a78bfa",
-    lightColor: "#6d4cc7",
-    colorDim: "#a78bfa22",
-    colorMid: "#a78bfa55",
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
     tag: "YOLO · Object Detection",
-    statusLabel: "VESSEL TRACKER",
+    statusLabel: "Vessel intake",
   },
   radar: {
     id: "radar",
     label: "Radar Objects",
-    title: "Radar Object Classification",
+    title: "Radar Objects",
     endpoint: `${API_BASE_URL}/predict-radar-object`,
-    description: "Fused YOLO + CNN pipeline classifying radar signatures as bird, ship, or unknown.",
+    description: "Three-class RadarTargetCNN for radar screenshots: bird, ship, or unknown.",
     icon: RadioTower,
-    color: "#f97316",
-    lightColor: "#b9530b",
-    colorDim: "#f9731622",
-    colorMid: "#f9731655",
-    tag: "YOLO + CNN Fusion",
-    statusLabel: "RADAR ANALYSIS",
+    color: "#ffbd74",
+    lightColor: "#c97a22",
+    colorDim: "#ffbd7422",
+    colorMid: "#ffbd7455",
+    tag: "RadarTargetCNN",
+    statusLabel: "Radar intake",
+  },
+  chat: {
+    id: "chat",
+    label: "Chat Assistant",
+    title: "Chat Assistant",
+    endpoint: `${API_BASE_URL}/chat/analyze`,
+    description: "Guided, deterministic image analysis using OceanIQ’s existing hull, sea-state, vessel and radar models — no LLM.",
+    icon: MessageSquare,
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
+    tag: "Guided · Multi-component",
+    statusLabel: "Guided analysis",
   },
   simulation: {
     id: "simulation",
     label: "Live Simulation",
-    title: "Live Maritime Simulation",
-    description: "Streams SAR images, replays two AIS trajectories, forecasts motion with the selected GRU and assesses DCPA/TCPA collision risk.",
+    title: "Live Simulation",
+    description: "Replay SAR/radar frames with AIS trajectories, GRU motion forecasts and DCPA/TCPA encounter-risk assessment.",
     icon: Navigation,
-    color: "#00d4ff",
-    lightColor: "#007fa5",
-    colorDim: "#00d4ff22",
-    colorMid: "#00d4ff55",
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
     tag: "SAR · AIS · GRU · CPA",
-    statusLabel: "SIMULATION CONTROL",
+    statusLabel: "Simulation control",
   },
 
   database: {
     id: "database",
     label: "Database",
-    title: "OceanIQ Database",
+    title: "Database",
     endpoint: null,
     description:
-      "Stored Radar classification and Live Simulation records.",
+      "Review stored radar classifications and live-simulation runs when MongoDB persistence is available.",
     icon: Layers,
-    color: "#38bdf8",
-    lightColor: "#0369a1",
-    colorDim: "#38bdf822",
-    colorMid: "#38bdf855",
-    tag: "MongoDB Records",
-    statusLabel: "DATABASE",
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
+    tag: "MongoDB records",
+    statusLabel: "History",
   },
 
 };
@@ -296,27 +328,34 @@ function SystemClock() {
   return <span className="sys-clock">{time}</span>;
 }
 
-/* ══════════════════════════════════════════════════════════
-   SYSTEM STATUS ROWS — shows AI subsystem states
-   Blinking dots reinforce the "live system" aesthetic
-   ══════════════════════════════════════════════════════════ */
-const STATUS_LINES = [
-  { label: "AI ENGINE",   state: "ONLINE" },
-  { label: "MODEL CACHE", state: "READY" },
-  { label: "INFERENCE",   state: "ARMED" },
-  { label: "BACKEND",     state: "ACTIVE" },
-];
-
+/* Session facts only — no fabricated engine/cache/latency metrics */
 function StatusRows() {
+  const { user, canWrite, isAdmin, accessLevel } = useAuth();
+  const accessLabel = isAdmin
+    ? "Admin"
+    : canWrite
+      ? "Read / write"
+      : accessLevel === "read_only"
+        ? "Read only"
+        : "Limited";
+
   return (
     <div className="status-rows">
-      {STATUS_LINES.map((s) => (
-        <div className="status-row" key={s.label}>
-          <span className="status-blink" />
-          <span className="status-key">{s.label}</span>
-          <span className="status-val">{s.state}</span>
-        </div>
-      ))}
+      <div className="status-row">
+        <span className="status-blink" aria-hidden="true" />
+        <span className="status-key">Session</span>
+        <span className="status-val">Signed in</span>
+      </div>
+      <div className="status-row">
+        <span className="status-blink" aria-hidden="true" />
+        <span className="status-key">Access</span>
+        <span className="status-val">{accessLabel}</span>
+      </div>
+      <div className="status-row">
+        <span className="status-blink" aria-hidden="true" />
+        <span className="status-key">Account</span>
+        <span className="status-val">{user?.username || "—"}</span>
+      </div>
     </div>
   );
 }
@@ -349,13 +388,13 @@ function ConfidenceRing({ value, color }) {
           }}
         />
         <text x="55" y="51" textAnchor="middle"
-          fill="white" fontSize="17" fontWeight="700" fontFamily="'Space Mono', monospace">
+          fill="white" fontSize="17" fontWeight="700" fontFamily="Inter, system-ui, sans-serif">
           {Math.round(value)}%
         </text>
         <text x="55" y="66" textAnchor="middle"
-          fill="rgba(255,255,255,0.35)" fontSize="7.5" fontFamily="'Space Mono', monospace"
-          letterSpacing="1.5">
-          CONFIDENCE
+          fill="rgba(255,255,255,0.45)" fontSize="8" fontFamily="Inter, system-ui, sans-serif"
+          letterSpacing="1.2">
+          Confidence
         </text>
       </svg>
     </div>
@@ -467,7 +506,7 @@ function AppContent() {
   const { theme } = useTheme();
 
   /* ── Application state ── */
-  const [activeModule, setActiveModule] = useState("hull");
+  const [activeModule, setActiveModule] = useState("home");
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
@@ -2253,6 +2292,36 @@ const generateSeaStatePDF = () => {
                   %
                 </p>
               </div>
+              <div
+                className="radar-model-card"
+                style={{
+                  borderColor: "#ffb34744",
+                }}
+              >
+                <p
+                  className="rmc-label"
+                  style={{
+                    color: "#ffb347",
+                  }}
+                >
+                  UNKNOWN PROBABILITY
+                </p>
+                <p className="rmc-pred">
+                  UNKNOWN
+                </p>
+                <p
+                  className="rmc-conf"
+                  style={{
+                    color: "#ffb347",
+                  }}
+                >
+                  {Number(
+                    result.unknown_probability
+                    ?? 0
+                  ).toFixed(2)}
+                  %
+                </p>
+              </div>
 
             </div>
 
@@ -2291,23 +2360,21 @@ const generateSeaStatePDF = () => {
 
         {/* OceanIQ brand mark */}
         <div className="sidebar-brand">
-          <div className="sb-logo">
-            <Anchor size={19} strokeWidth={2.5} />
+          <div className="sb-logo" aria-hidden="true">
+            <Anchor size={22} strokeWidth={2.5} />
           </div>
           <div>
             <p className="sb-name">OceanIQ</p>
-            <p className="sb-tagline">Marine Intelligence</p>
+            <p className="sb-tagline">Marine intelligence</p>
           </div>
         </div>
 
-        {/* Research project identifier */}
-        <div className="sidebar-proj-tag">
-          <Globe size={10} />
+        <div className="sidebar-proj-tag" aria-label="Research group">
+          <Globe size={12} aria-hidden="true" />
           R26-IT-003
         </div>
 
-        {/* Module navigation — clicking switches the active AI module */}
-        <p className="sidebar-sec-label">AI MODULES</p>
+        <p className="sidebar-sec-label">Workspace</p>
         <nav className="module-nav">
           {Object.values(MODULES).map((m) => {
             const Icon = m.icon;
@@ -2349,16 +2416,14 @@ const generateSeaStatePDF = () => {
 
         <div style={{ flex: 1 }} />
 
-        {/* System health status indicators */}
         <div className="sidebar-status-block">
-          <p className="sidebar-sec-label">SYSTEM STATUS</p>
+          <p className="sidebar-sec-label">Account status</p>
           <StatusRows />
         </div>
 
-        {/* Live clock + version info */}
         <div className="sidebar-footer">
           <SystemClock />
-          <span className="sidebar-ver">v2.0 · R26-IT-003</span>
+          <span className="sidebar-ver">R26-IT-003</span>
         </div>
       </aside>
 
@@ -2408,7 +2473,7 @@ const generateSeaStatePDF = () => {
               }}
             >
               <Download size={14} />
-              DOWNLOAD RADAR REPORT
+              Download radar report
             </button>
           )}
 
@@ -2432,8 +2497,8 @@ const generateSeaStatePDF = () => {
                 }
               }}
             >
-              <Download size={14} />
-              DOWNLOAD SIMULATION REPORT
+              <Download size={14} aria-hidden="true" />
+              Download simulation report
             </button>
           )}
 
@@ -2457,21 +2522,23 @@ const generateSeaStatePDF = () => {
                 }
               }}
             >
-              <Download size={14} />
-              DOWNLOAD DATABASE REPORT
+              <Download size={14} aria-hidden="true" />
+              Download database report
             </button>
           )}
 
 <ThemeToggle compact />
-            <div className="badge-live"><span className="live-dot" />LIVE</div>
-            <div className="badge-secure"><Shield size={12} />SECURE</div>
+            <div className="badge-live" title="Authenticated application session">
+              <span className="live-dot" aria-hidden="true" />
+              Signed in
+            </div>
             <div className={`badge-access ${canWrite ? "badge-access--write" : "badge-access--read"}`}>
-              <LockKeyhole size={12} />
-              {isAdmin ? "ADMIN" : accessLevel === "read_write" ? "READ / WRITE" : "READ ONLY"}
+              <LockKeyhole size={12} aria-hidden="true" />
+              {isAdmin ? "Admin" : accessLevel === "read_write" ? "Read / write" : "Read only"}
             </div>
             {isAdmin && (
-              <button className="admin-access-btn" onClick={() => setShowAccessAdmin(true)}>
-                <UserRoundCog size={13} /> ACCESS ADMIN
+              <button type="button" className="admin-access-btn" onClick={() => setShowAccessAdmin(true)}>
+                <UserRoundCog size={13} aria-hidden="true" /> Access admin
               </button>
             )}
             <span className="cb-user">{user?.username}</span>
@@ -2479,13 +2546,14 @@ const generateSeaStatePDF = () => {
           </div>
         </header>
 
-        {/* Module description strip — shows what the selected model does */}
-        <div className="desc-strip" style={{ borderColor: mod.colorMid }}>
-          <Cpu size={13} style={{ color: mod.color, flexShrink: 0, marginTop: 1 }} />
-          <p>{mod.description}</p>
-        </div>
+        {activeModule !== "home" && (
+          <div className="desc-strip">
+            <Cpu size={14} style={{ color: mod.color, flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+            <p>{mod.description}</p>
+          </div>
+        )}
 
-        {!canWrite && (
+        {!canWrite && activeModule !== "home" && (
           <div className="readonly-banner">
             <LockKeyhole size={14} />
             <div>
@@ -2495,12 +2563,16 @@ const generateSeaStatePDF = () => {
           </div>
         )}
 
-        {activeModule === "database" ? (
+        {activeModule === "home" ? (
+          <HomePage onNavigate={switchModule} />
+        ) : activeModule === "database" ? (
           <DatabaseViewer />
         ) : activeModule === "simulation" ? (
           <div className={!canWrite ? "simulation-readonly" : ""}>
             <LiveSimulation mediaFit={mediaFit} onMediaFitChange={setMediaFit} />
           </div>
+        ) : activeModule === "chat" ? (
+          <ChatAssistant />
         ) : (
           <>
         {/* ── 3-panel analysis grid ── */}
@@ -2725,7 +2797,7 @@ const generateSeaStatePDF = () => {
           </>
         )}
 
-        {activeModule !== "simulation" && file && canWrite && (
+        {activeModule !== "home" && activeModule !== "simulation" && activeModule !== "chat" && activeModule !== "database" && file && canWrite && (
           <div className="mobile-action-dock">
             <button type="button" className="mobile-change-btn" onClick={() => fileInputRef.current?.click()}>
               <Upload size={14} /> CHANGE

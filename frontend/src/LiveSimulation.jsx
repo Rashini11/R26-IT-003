@@ -29,7 +29,7 @@ import MediaFitToggle from "./components/MediaFitToggle";
  *   VITE_API_BASE_URL=http://server:8000
  */
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? "" : "http://localhost:8000");
 
 function fmt(value, digits = 2, fallback = "—") {
   if (
@@ -716,15 +716,7 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
             </option>
 
             <option value="all">
-              All classes
-            </option>
-
-            <option value="bird">
-              Bird images
-            </option>
-
-            <option value="unknown">
-              Unknown images
+              All available ship folders
             </option>
           </select>
         </label>
@@ -951,14 +943,30 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
                     %
                   </em>
                 </div>
+                <div>
+                  <small>
+                    UNKNOWN PROBABILITY
+                  </small>
+                  <strong>
+                    UNKNOWN
+                  </strong>
+                  <em>
+                    {fmt(
+                      sar?.unknown_probability,
+                      2
+                    )}
+                    %
+                  </em>
+                </div>
 
               </div>
 
               <div className="sim-decision">
 
-                {sar?.classification
-                  && sar.classification
-                  !== "uncertain"
+                {(
+                  sar?.classification === "bird"
+                  || sar?.classification === "ship"
+                )
                   ? (
                     <CheckCircle2
                       size={15}

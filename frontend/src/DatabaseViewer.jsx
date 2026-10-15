@@ -12,13 +12,10 @@ export default function DatabaseViewer() {
       <div className="page-heading">
 
         <div>
-          <h1>
-            OceanIQ Database
-          </h1>
+          <h1>Database</h1>
 
           <p>
-            Stored Radar classification and
-            Live Simulation records.
+            Stored radar classifications and live-simulation runs when persistence is available.
           </p>
         </div>
 

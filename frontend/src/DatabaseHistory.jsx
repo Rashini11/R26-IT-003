@@ -7,18 +7,33 @@ import {
 import axios from "axios";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:8000";
+  import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? "" : "http://localhost:8000");
 
 
 function formatDate(value) {
-  if (!value) return "—";
+  if (value === null || value === undefined || value === "") {
+    return "Not recorded";
+  }
 
   try {
     return new Date(value).toLocaleString();
   } catch {
-    return value;
+    return String(value);
   }
+}
+
+function textOrMissing(value) {
+  if (value === null || value === undefined || value === "") {
+    return "Not recorded";
+  }
+  return value;
+}
+
+function percentOrMissing(value) {
+  if (value === null || value === undefined || value === "") {
+    return "Not recorded";
+  }
+  return `${value}%`;
 }
 
 
@@ -62,16 +77,15 @@ export function RadarDatabaseHistory() {
   return (
     <section className="sim-panel sim-events">
       <div className="sim-panel-head">
-        <span>
-          DATABASE · RADAR HISTORY
-        </span>
+        <span>Radar history</span>
 
         <button
           type="button"
+          className="sim-button sim-button--ghost"
           onClick={loadHistory}
           disabled={loading}
         >
-          {loading ? "LOADING..." : "REFRESH"}
+          {loading ? "Loading…" : "Refresh"}
         </button>
       </div>
 
@@ -85,13 +99,14 @@ export function RadarDatabaseHistory() {
         <table>
           <thead>
             <tr>
-              <th>TIME</th>
-              <th>FILE</th>
-              <th>PREDICTION</th>
-              <th>CONFIDENCE</th>
-              <th>BIRD</th>
-              <th>SHIP</th>
-              <th>MODEL</th>
+              <th>Time</th>
+              <th>File</th>
+              <th>Prediction</th>
+              <th>Confidence</th>
+              <th>Bird</th>
+              <th>Ship</th>
+              <th>Unknown</th>
+              <th>Model</th>
             </tr>
           </thead>
 
@@ -103,40 +118,37 @@ export function RadarDatabaseHistory() {
                     `${record.timestamp}-${index}`
                   }
                 >
-                  <td data-label="TIME">
+                  <td data-label="Time">
                     {formatDate(
                       record.timestamp
                     )}
                   </td>
 
-                  <td data-label="FILE">
-                    {record.filename || "—"}
+                  <td data-label="File">
+                    {textOrMissing(record.filename)}
                   </td>
 
-                  <td data-label="PREDICTION">
-                    {record.final_prediction || "—"}
+                  <td data-label="Prediction">
+                    {textOrMissing(record.final_prediction)}
                   </td>
 
-                  <td data-label="CONFIDENCE">
-                    {record.confidence ?? "—"}%
+                  <td data-label="Confidence">
+                    {percentOrMissing(record.confidence)}
                   </td>
 
-                  <td data-label="BIRD">
-                    {
-                      record.bird_probability
-                      ?? "—"
-                    }%
+                  <td data-label="Bird">
+                    {percentOrMissing(record.bird_probability)}
                   </td>
 
-                  <td data-label="SHIP">
-                    {
-                      record.ship_probability
-                      ?? "—"
-                    }%
+                  <td data-label="Ship">
+                    {percentOrMissing(record.ship_probability)}
+                  </td>
+                  <td data-label="Unknown">
+                    {percentOrMissing(record.unknown_probability)}
                   </td>
 
-                  <td data-label="MODEL">
-                    {record.model_name || "—"}
+                  <td data-label="Model">
+                    {textOrMissing(record.model_name)}
                   </td>
                 </tr>
               )
@@ -144,8 +156,8 @@ export function RadarDatabaseHistory() {
 
             {!records.length && !loading && (
               <tr>
-                <td colSpan="7">
-                  No stored Radar records.
+                <td colSpan={8}>
+                  No stored radar records.
                 </td>
               </tr>
             )}
@@ -263,16 +275,15 @@ export function SimulationDatabaseHistory() {
     <>
       <section className="sim-panel sim-events">
         <div className="sim-panel-head">
-          <span>
-            DATABASE · SIMULATION RUNS
-          </span>
+          <span>Simulation runs</span>
 
           <button
             type="button"
+            className="sim-button sim-button--ghost"
             onClick={loadRuns}
             disabled={loading}
           >
-            {loading ? "LOADING..." : "REFRESH"}
+            {loading ? "Loading…" : "Refresh"}
           </button>
         </div>
 
@@ -286,12 +297,12 @@ export function SimulationDatabaseHistory() {
           <table>
             <thead>
               <tr>
-                <th>STATUS</th>
-                <th>MODE</th>
-                <th>STARTED</th>
-                <th>ENDED</th>
-                <th>FRAMES</th>
-                <th>SOURCE</th>
+                <th>Status</th>
+                <th>Mode</th>
+                <th>Started</th>
+                <th>Ended</th>
+                <th>Frames</th>
+                <th>Source</th>
               </tr>
             </thead>
 
@@ -308,38 +319,41 @@ export function SimulationDatabaseHistory() {
                     cursor: "pointer",
                   }}
                 >
-                  <td data-label="STATUS">
-                    {run.status || "—"}
+                  <td data-label="Status">
+                    {textOrMissing(run.status)}
                   </td>
 
-                  <td data-label="MODE">
-                    {
-                      run.scenario_mode
-                      || "—"
-                    }
+                  <td data-label="Mode">
+                    {textOrMissing(run.scenario_mode)}
                   </td>
 
-                  <td data-label="STARTED">
+                  <td data-label="Started">
                     {formatDate(
                       run.started_at
                     )}
                   </td>
 
-                  <td data-label="ENDED">
+                  <td data-label="Ended">
                     {formatDate(
                       run.ended_at
                     )}
                   </td>
 
-                  <td data-label="FRAMES">
-                    {run.frame_count ?? "—"}
+                  <td data-label="Frames">
+                    {run.frame_count == null ? "Not recorded" : run.frame_count}
                   </td>
 
-                  <td data-label="SOURCE">
-                    {run.sar_source || "—"}
+                  <td data-label="Source">
+                    {textOrMissing(run.sar_source)}
                   </td>
                 </tr>
               ))}
+
+              {!runs.length && !loading && (
+                <tr>
+                  <td colSpan={6}>No stored simulation runs.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -347,9 +361,7 @@ export function SimulationDatabaseHistory() {
 
       <section className="sim-panel sim-events">
         <div className="sim-panel-head">
-          <span>
-            DATABASE · STORED EVENTS
-          </span>
+          <span>Stored events</span>
 
           <span>
             {events.length} shown
@@ -360,14 +372,14 @@ export function SimulationDatabaseHistory() {
           <table>
             <thead>
               <tr>
-                <th>FRAME</th>
-                <th>TIME</th>
-                <th>RADAR</th>
-                <th>CONF.</th>
+                <th>Frame</th>
+                <th>Time</th>
+                <th>Radar</th>
+                <th>Conf.</th>
                 <th>GRU</th>
                 <th>DCPA</th>
                 <th>TCPA</th>
-                <th>RISK</th>
+                <th>Risk</th>
               </tr>
             </thead>
 
@@ -386,33 +398,25 @@ export function SimulationDatabaseHistory() {
                         + `-${event.frame_number}`
                       }
                     >
-                      <td data-label="FRAME">
-                        {event.frame_number}
+                      <td data-label="Frame">
+                        {event.frame_number == null ? "Not recorded" : event.frame_number}
                       </td>
 
-                      <td data-label="TIME">
+                      <td data-label="Time">
                         {
                           event
                             .simulated_timestamp
                             ?.slice(11, 19)
-                          || "—"
+                          || "Not recorded"
                         }
                       </td>
 
-                      <td data-label="RADAR">
-                        {
-                          event.sar
-                            ?.classification
-                          || "—"
-                        }
+                      <td data-label="Radar">
+                        {textOrMissing(event.sar?.classification)}
                       </td>
 
-                      <td data-label="CONF.">
-                        {
-                          event.sar
-                            ?.confidence
-                          ?? "—"
-                        }%
+                      <td data-label="Conf.">
+                        {percentOrMissing(event.sar?.confidence)}
                       </td>
 
                       <td data-label="GRU">
@@ -426,31 +430,33 @@ export function SimulationDatabaseHistory() {
                       <td data-label="DCPA">
                         {
                           event.encounter
-                            ?.dcpa_nautical_miles
-                          ?? "—"
-                        }{" "}
-                        NM
+                            ?.dcpa_nautical_miles == null
+                            ? "Not recorded"
+                            : `${event.encounter.dcpa_nautical_miles} NM`
+                        }
                       </td>
 
                       <td data-label="TCPA">
                         {
                           event.encounter
-                            ?.tcpa_minutes
-                          ?? "—"
-                        }{" "}
-                        min
+                            ?.tcpa_minutes == null
+                            ? "Not recorded"
+                            : `${event.encounter.tcpa_minutes} min`
+                        }
                       </td>
 
-                      <td data-label="RISK">
-                        {
-                          event.encounter
-                            ?.risk_level
-                          || "—"
-                        }
+                      <td data-label="Risk">
+                        {textOrMissing(event.encounter?.risk_level)}
                       </td>
                     </tr>
                   );
                 })}
+
+              {!events.length && !loading && (
+                <tr>
+                  <td colSpan={8}>No stored simulation events.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
