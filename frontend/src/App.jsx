@@ -694,9 +694,28 @@ useEffect(() => {
       if (activeModule === "boat") fetchVesselHistory();
     } catch (err) {
       console.error("Prediction error:", err);
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail
+        || err.response?.data?.error
+        || err.response?.data?.summary;
+
+      const readableDetail = typeof detail === "string" ? detail : null;
+
+      const fallback = !err.response
+        ? "Cannot reach the backend. Check that it is running."
+        : status === 503
+          ? "A required service is unavailable. Check the backend database/authentication connection."
+          : status === 401
+            ? "Your session has expired. Please sign in again."
+            : status === 403
+              ? "The request was denied. Check your permissions and sign-in session."
+              : status === 422
+                ? "The uploaded request failed validation."
+                : "Analysis failed. Check the backend logs.";
+
       setResult({
         __error: true,
-        message: `Connection failed — is the backend running at ${API_BASE_URL}?`,
+        message: `${readableDetail || fallback}${status ? ` (HTTP ${status})` : ""}`,
       });
     } finally {
       setLoading(false);

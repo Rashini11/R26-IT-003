@@ -123,6 +123,10 @@ export default function ChatAssistant() {
   const uploadRevisionRef = useRef(0);
   const imageUrlsRef = useRef(new Set());
   const analysisLockRef = useRef(false);
+  // OCEANIQ_AUTORUN_V1
+  const autoAnalysedFilesRef = useRef(new WeakSet());
+  const latestRunAnalysisRef = useRef(null);
+
 
   const chooseAnalysis = (component) => {
     manualSelectionRef.current = true;
@@ -139,7 +143,7 @@ export default function ChatAssistant() {
       appendMessage({
         role: "assistant",
         kind: "welcome",
-        text: "Welcome to OceanIQ. Upload an image for automatic component selection, then press Analyse. Manual selection is always available.",
+        text: "Welcome to OceanIQ. Upload an image and I will identify its component, run the matching analysis and show the result. Manual override is available.",
         analysisChoices: data.analysis_choices,
         actions: data.follow_up_actions,
         limitations: ["Experimental image router; unsupported-image detection is limited. No LLM is used."],
@@ -216,7 +220,7 @@ export default function ChatAssistant() {
       appendMessage({
         role: "assistant",
         kind: "needs_selection",
-        text: "Checking the image type. The matching component will be selected automatically. You can override it manually.",
+        text: "Checking the image type. The matching component will be detected and analysed automatically.",
         analysisChoices: ANALYSIS_OPTIONS,
       });
     }
@@ -285,10 +289,10 @@ export default function ChatAssistant() {
       setRoutingSuggestion({
         ...data, sourceFile: file,
         message: detected
-          ? `Detected image type: ${data.label}. The matching component is selected automatically. Press Analyse image to run it, or choose a different component.`
+          ? `Detected image type: ${data.label}. The matching component is selected automatically. The matching analysis starts automatically unless you override the component.`
           : data.message,
       });
-      setStatusText(detected ? `Detected ${data.label}. Ready to analyse.` : data.message);
+      setStatusText(detected ? `Detected ${data.label}. Preparing analysis…` : data.message);
     }).catch((error) => {
       if (!active || revision !== uploadRevisionRef.current || error?.code === "ERR_CANCELED") return;
       setRoutingSuggestion({
@@ -397,6 +401,33 @@ export default function ChatAssistant() {
       setBusy(false);
     }
   };
+
+
+  // Use the latest request function without rerunning because it changed.
+  latestRunAnalysisRef.current = runAnalysis;
+
+  useEffect(() => {
+    if (
+      !file || !canWrite || busy || routingBusy ||
+      analysisLockRef.current ||
+      manualSelectionRef.current ||
+      routingSuggestion?.sourceFile !== file ||
+      routingSuggestion?.status !== "needs_confirmation"
+    ) return;
+
+    const component = routingSuggestion.suggested_component;
+    if (!ANALYSIS_OPTIONS.some((option) => option.id === component)) return;
+
+    // At most one automatic component analysis per uploaded File object.
+    if (autoAnalysedFilesRef.current.has(file)) return;
+    autoAnalysedFilesRef.current.add(file);
+
+    setSelectedAnalysis(component);
+    setMessages((previous) =>
+      previous.filter((message) => message.kind !== "needs_selection")
+    );
+    latestRunAnalysisRef.current?.(component);
+  }, [file, canWrite, busy, routingBusy, routingSuggestion]);
 
   const findResultPayload = (resultId) => {
     const match = [...messages]
@@ -531,8 +562,8 @@ export default function ChatAssistant() {
             Analyse a maritime image with <span>OceanIQ.</span>
           </h2>
           <p>
-            Upload an image and OceanIQ will detect its type and select the matching component.
-            Press Analyse to view the result, or change the component manually.
+            Upload an image. OceanIQ identifies its type, runs the matching component,
+            and displays the result in this conversation. Manual override remains available.
           </p>
         </div>
         <div className="chat-hero-card">

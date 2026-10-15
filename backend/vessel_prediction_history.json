@@ -108,5 +108,37 @@
         "detection_type": "ship"
       }
     ]
+  },
+  {
+    "image": "AUSTRALIA-MARU-1_jpg.rf.e6416fa81edebdb185a9b1a18608b9b1.jpg",
+    "status": "Detected",
+    "confidence": 86.7,
+    "timestamp": "2026-10-16 02:54:27",
+    "source": "Drone",
+    "estimated_size": "Medium Vessel",
+    "vessel_origin": "Foreign Boat",
+    "results": [
+      {
+        "label": "Foreign Boat",
+        "confidence": 86.7,
+        "sl_flag_detected": false,
+        "box": [
+          105.21085357666016,
+          0.0,
+          335.3617858886719,
+          380.4997863769531
+        ],
+        "detection_type": "boat"
+      }
+    ],
+    "count": 1,
+    "image_size": [
+      416,
+      416
+    ],
+    "demo": false,
+    "module": "vessel",
+    "mode": "image",
+    "request_source": "manual_upload"
   }
 ]
