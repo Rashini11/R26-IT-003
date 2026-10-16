@@ -12,7 +12,7 @@
  *   npm install axios lucide-react
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Fragment, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import axios from "axios";
 import { jsPDF } from "jspdf";
 import {
@@ -33,6 +33,7 @@ import {
   Zap,
   BarChart2,
   Crosshair,
+  Film,
   ChevronRight,
   Network,
   Globe,
@@ -41,6 +42,7 @@ import {
   Navigation,
   UserRoundCog,
   LockKeyhole,
+  X,
 } from "lucide-react";
 import LiveSimulation from "./LiveSimulation";
 
@@ -107,7 +109,7 @@ const MODULES = {
     label: "Vessel Detection",
     title: "Vessel Detection",
     endpoint: `${API_BASE_URL}/predict-boat-detection`,
-    description: "YOLO-based real-time object detection for maritime vessel identification.",
+    description: "Identify vessel types and read the vessel name, port, and IMO number from separate images.",
     icon: Ship,
     color: "#a78bfa",
     lightColor: "#6d4cc7",
@@ -167,30 +169,22 @@ function filterVesselDetections(detections = []) {
     detection?.detection_type === "flag" ||
     detection?.label?.trim().toLowerCase() === "sl flag";
   const confidenceOf = (detection) => Number(detection?.confidence) || 0;
-  const adjustedConfidence = (detection) => {
-    const rawConfidence = confidenceOf(detection);
-    const score = rawConfidence > 1 ? rawConfidence / 100 : rawConfidence;
+  return detections
+    .filter((detection) => !isFlag(detection))
+    .map((detection) => {
+      const confidence = confidenceOf(detection);
+      return {
+        ...detection,
+        confidence: Number((confidence <= 1 ? confidence * 100 : confidence).toFixed(1)),
+      };
+    });
+}
 
-    if (score >= 0.90) {
-      return Number((75 + Math.random() * 14).toFixed(1));
-    }
-    if (score < 0.50) {
-      return Number((50 + Math.random() * 10).toFixed(1));
-    }
-    return Number((score * 100).toFixed(1));
-  };
-  const bestOf = (items) => items.reduce(
-    (best, detection) =>
-      !best || confidenceOf(detection) > confidenceOf(best) ? detection : best,
-    null,
-  );
-
-  const bestVessel = bestOf(detections.filter((detection) => !isFlag(detection)));
-  const bestFlag = bestOf(detections.filter(isFlag));
-  return [bestVessel, bestFlag].filter(Boolean).map((detection) => ({
-    ...detection,
-    confidence: adjustedConfidence(detection),
-  }));
+function parseVesselClassifications(value = "") {
+  return value
+    .split(/\s*(?:,|\bor\b)\s*/i)
+    .map((label) => label.trim())
+    .filter(Boolean);
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -416,7 +410,7 @@ function BoatDetectionOverlay({
         const [x1, y1, x2, y2] = detection.box;
         const boxWidth = Math.max(1, x2 - x1);
         const boxHeight = Math.max(1, y2 - y1);
-        const label = `${detection.label} ${detection.confidence}%`;
+        const label = detection.label;
         const labelWidth = Math.min(imageWidth - x1, Math.max(120, label.length * 8));
         const labelY = Math.max(18, y1);
         const isLocal = detection.label?.startsWith("Local ");
@@ -468,6 +462,10 @@ function AppContent() {
   /* ── Application state ── */
   const [activeModule, setActiveModule] = useState("hull");
   const [file, setFile] = useState(null);
+  const [vesselVideoFile, setVesselVideoFile] = useState(null);
+  const [vesselVideoPreview, setVesselVideoPreview] = useState(null);
+  const [vesselInfoFile, setVesselInfoFile] = useState(null);
+  const [vesselInfoPreview, setVesselInfoPreview] = useState(null);
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -479,21 +477,49 @@ function AppContent() {
   const [seaHistoryLoading, setSeaHistoryLoading] = useState(false);
   const [vesselHistory, setVesselHistory] = useState([]);
   const [vesselHistoryLoading, setVesselHistoryLoading] = useState(false);
+  const [vesselHistoryError, setVesselHistoryError] = useState("");
+  const [vesselHistoryStorage, setVesselHistoryStorage] = useState("unknown");
+  const [expandedHistoryImage, setExpandedHistoryImage] = useState(null);
+  const [vesselRecordId, setVesselRecordId] = useState(null);
+  const [shipAnalysisDone, setShipAnalysisDone] = useState(false);
+  const [videoAnalysisDone, setVideoAnalysisDone] = useState(false);
+  const [vesselInfoAnalysisDone, setVesselInfoAnalysisDone] = useState(false);
+  const [vesselDraft, setVesselDraft] = useState({
+    vessel_name: "",
+    port: "",
+    imo_number: "",
+    vessel_classifications: "",
+    notes: "",
+  });
+  const [editingVesselRecordId, setEditingVesselRecordId] = useState(null);
+  const [editingVesselDraft, setEditingVesselDraft] = useState(null);
+  const [vesselDraftDirty, setVesselDraftDirty] = useState(false);
   const [showAccessAdmin, setShowAccessAdmin] = useState(false);
   const [mediaFit, setMediaFit] = useState(() => {
     const saved = window.localStorage.getItem("oceaniq-media-fit");
     return saved === "fill" ? "fill" : "fit";
   });
   const fileInputRef = useRef(null);
+  const vesselInfoFileInputRef = useRef(null);
   const resultsCardRef = useRef(null);
-
-  const [isVideo, setIsVideo] = useState(false);
-  const [analysedVideoUrl, setAnalysedVideoUrl] = useState(null);
-  const [videoPreviewError, setVideoPreviewError] = useState(false);
 
   useEffect(() => {
     window.localStorage.setItem("oceaniq-media-fit", mediaFit);
   }, [mediaFit]);
+  useEffect(() => () => {
+    if (vesselInfoPreview) URL.revokeObjectURL(vesselInfoPreview);
+  }, [vesselInfoPreview]);
+  useEffect(() => () => {
+    if (vesselVideoPreview) URL.revokeObjectURL(vesselVideoPreview);
+  }, [vesselVideoPreview]);
+  useEffect(() => {
+    if (!expandedHistoryImage) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setExpandedHistoryImage(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [expandedHistoryImage]);
 useEffect(() => {
     if (!result || loading || window.innerWidth > 1180) return;
     const timer = window.setTimeout(() => {
@@ -515,30 +541,6 @@ useEffect(() => {
     () => filterVesselDetections(result?.results || []),
     [result?.results],
   );
-
-  useEffect(() => {
-    let objectUrl = null;
-    let cancelled = false;
-
-    if (!isVideo || !result?.video_url) return undefined;
-
-    axios.get(`${API_BASE_URL}${result.video_url}`, {
-      responseType: "blob",
-      withCredentials: true,
-    }).then(({ data }) => {
-      if (cancelled) return;
-      objectUrl = URL.createObjectURL(data);
-      setAnalysedVideoUrl(objectUrl);
-    }).catch((error) => {
-      console.error("Failed to load analysed video preview:", error);
-      if (!cancelled) setVideoPreviewError(true);
-    });
-
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [isVideo, result?.video_url]);
 
   /* ── Sea-state history helpers ── */
   const fetchSeaHistory = useCallback(async () => {
@@ -566,39 +568,138 @@ useEffect(() => {
   const fetchVesselHistory = useCallback(async () => {
     try {
       setVesselHistoryLoading(true);
+      setVesselHistoryError("");
       const { data } = await axios.get(`${API_BASE_URL}/vessel-detection-history`);
       setVesselHistory(data.history || []);
+      setVesselHistoryStorage(data.storage || "unknown");
     } catch (error) {
       console.error("Failed to load vessel detection history:", error);
+      setVesselHistoryError("Could not load saved vessel records.");
     } finally {
       setVesselHistoryLoading(false);
     }
   }, []);
 
-  const clearVesselHistory = async () => {
-    if (!canWrite) return;
-    try {
-      await axios.delete(`${API_BASE_URL}/vessel-detection-history`);
-      setVesselHistory([]);
-    } catch (error) {
-      console.error("Failed to clear vessel detection history:", error);
-    }
-  };
-
   /* ── File selection handler ── */
   const processFile = useCallback((f) => {
-    const acceptsVideo = activeModule === "boat" && f?.type.startsWith("video/");
-    if (!canWrite || !f || (!f.type.startsWith("image/") && !acceptsVideo)) return;
+    if (!canWrite || !f) return;
+    const fileExtension = f.name.split(".").pop()?.toLowerCase();
+    const isVideo = activeModule === "boat" && (
+      f.type.startsWith("video/") ||
+      ["mp4", "mov", "avi", "mkv", "webm"].includes(fileExtension)
+    );
+    if (isVideo) {
+      setFile(null);
+      setPreview(null);
+      setVesselVideoFile(f);
+      setVesselVideoPreview(URL.createObjectURL(f));
+      setShipAnalysisDone(false);
+      setVideoAnalysisDone(false);
+      setVesselInfoAnalysisDone(false);
+      setVesselRecordId(null);
+      setVesselDraft({
+        vessel_name: "",
+        port: "",
+        imo_number: "",
+        vessel_classifications: "",
+        notes: "",
+      });
+      setResult(null);
+      return;
+    }
+    if (!f.type.startsWith("image/")) return;
     setFile(f);
-    setIsVideo(acceptsVideo);
-    setAnalysedVideoUrl(null);
-    setVideoPreviewError(false);
-    setResult(null);
+    if (activeModule === "boat") {
+      setVesselVideoFile(null);
+      setVesselVideoPreview(null);
+      setVideoAnalysisDone(false);
+      setVesselRecordId(null);
+      setShipAnalysisDone(false);
+      setVesselDraft((current) => ({ ...current, vessel_classifications: "" }));
+      setResult((current) => current?.video_analysis_performed ? null : current ? {
+        ...current,
+        image: null,
+        results: [],
+        count: 0,
+        confidence: 0,
+        vessel_detection_performed: false,
+      } : null);
+    }
+    if (activeModule !== "boat") setResult(null);
     setShowGradcam(false);
     setPreview(URL.createObjectURL(f));
   }, [activeModule, canWrite]);
 
   const handleFileChange = (e) => processFile(e.target.files[0]);
+  const handleVesselInfoFileChange = (e) => {
+    const selectedFile = e.target.files[0];
+    if (!canWrite || !selectedFile?.type.startsWith("image/")) return;
+    setVesselInfoFile(selectedFile);
+    setVesselInfoPreview(URL.createObjectURL(selectedFile));
+    setVesselInfoAnalysisDone(false);
+    setVesselDraft({
+      vessel_name: "",
+      port: "",
+      imo_number: "",
+      vessel_classifications: "",
+      notes: "",
+    });
+    setVesselRecordId(null);
+    setResult((current) => current ? {
+      ...current,
+      vessel_info_image: null,
+      vessel_info: null,
+      vessel_info_detections: [],
+      vessel_info_performed: false,
+    } : null);
+  };
+  const clearVesselImage = () => {
+    setFile(null);
+    setPreview(null);
+    setVesselRecordId(null);
+    setShipAnalysisDone(false);
+    setResult((current) => (
+      current?.vessel_info_performed
+        ? {
+            ...current,
+            vessel_detection_performed: false,
+            image: null,
+            results: [],
+            count: 0,
+            confidence: 0,
+          }
+        : null
+    ));
+  };
+  const clearVesselVideo = () => {
+    setVesselVideoFile(null);
+    setVesselVideoPreview(null);
+    setVideoAnalysisDone(false);
+    setShipAnalysisDone(false);
+    setVesselInfoAnalysisDone(false);
+    setVesselRecordId(null);
+    setVesselDraft({
+      vessel_name: "",
+      port: "",
+      imo_number: "",
+      vessel_classifications: "",
+      notes: "",
+    });
+    setResult(null);
+  };
+  const clearVesselInfoImage = () => {
+    setVesselInfoFile(null);
+    setVesselInfoPreview(null);
+    setVesselInfoAnalysisDone(false);
+    setVesselRecordId(null);
+    setResult((current) => current ? {
+      ...current,
+      vessel_info_performed: false,
+      vessel_info_image: null,
+      vessel_info: null,
+      vessel_info_detections: [],
+    } : null);
+  };
 
   /* ── Drag and drop handlers ── */
   const handleDrop = (e) => {
@@ -611,10 +712,15 @@ useEffect(() => {
   const switchModule = (id) => {
     setActiveModule(id);
     setFile(null);
-    setIsVideo(false);
+    setVesselVideoFile(null);
+    setVesselVideoPreview(null);
+    setVesselInfoFile(null);
+    setVesselInfoPreview(null);
+    setVesselRecordId(null);
+    setShipAnalysisDone(false);
+    setVideoAnalysisDone(false);
+    setVesselInfoAnalysisDone(false);
     setPreview(null);
-    setAnalysedVideoUrl(null);
-    setVideoPreviewError(false);
     setResult(null);
     setShowGradcam(false);
     setApplyEnhancement(false);
@@ -630,6 +736,7 @@ useEffect(() => {
      All original endpoints are preserved.
      ══════════════════════════════════════════════ */
   const runPrediction = async () => {
+    if (activeModule === "boat") return runVesselAnalysis("ship");
     if (!file || loading || !canWrite) return;
     const form = new FormData();
     form.append("file", file);
@@ -639,10 +746,7 @@ useEffect(() => {
     try {
       setLoading(true);
       setResult(null);
-      const endpoint = activeModule === "boat" && isVideo
-        ? `${API_BASE_URL}/predict-boat-video`
-        : mod.endpoint;
-      const { data } = await axios.post(endpoint, form, {
+      const { data } = await axios.post(mod.endpoint, form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       if (data?.error) {
@@ -651,7 +755,6 @@ useEffect(() => {
         setResult(data);
       }
       if (activeModule === "sea") fetchSeaHistory();
-      if (activeModule === "boat") fetchVesselHistory();
     } catch (err) {
       console.error("Prediction error:", err);
       setResult({
@@ -660,6 +763,222 @@ useEffect(() => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const runVesselAnalysis = async (stage) => {
+    const sourceFile = stage === "video"
+      ? vesselVideoFile
+      : stage === "ship" ? file : vesselInfoFile;
+    if (!sourceFile || loading || !canWrite) return;
+    const form = new FormData();
+    form.append(
+      stage === "video" ? "video_file" : stage === "ship" ? "file" : "vessel_info_file",
+      sourceFile,
+    );
+    try {
+      setLoading(true);
+      const endpoint = stage === "video"
+        ? `${API_BASE_URL}/predict-boat-video`
+        : MODULES.boat.endpoint;
+      const { data } = await axios.post(endpoint, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      if (data?.error) {
+        setResult({ __error: true, message: data.error, details: data.validation });
+        return;
+      }
+      if (stage === "video") {
+        setResult(data);
+        setVideoAnalysisDone(true);
+        setShipAnalysisDone(false);
+        setVesselInfoAnalysisDone(false);
+        setVesselRecordId(null);
+        setVesselDraft((current) => ({
+          ...current,
+          vessel_classifications: [...new Set(data.vessel_classifications || [])].join(" or "),
+        }));
+        return;
+      }
+      setResult((current) => ({
+        ...current,
+        ...data,
+        image: stage === "ship" ? data.image : current?.image || null,
+        results: stage === "ship" ? data.results || [] : current?.results || [],
+        count: stage === "ship" ? data.count || 0 : current?.count || 0,
+        confidence: stage === "ship" ? data.confidence || 0 : current?.confidence || 0,
+        status: stage === "ship" ? data.status : current?.status || data.status,
+        vessel_detection_performed: stage === "ship" || Boolean(current?.vessel_detection_performed),
+        vessel_info_image: stage === "info" ? data.vessel_info_image : current?.vessel_info_image || null,
+        vessel_info: stage === "info" ? data.vessel_info : current?.vessel_info || null,
+        vessel_info_detections: stage === "info"
+          ? data.vessel_info_detections || []
+          : current?.vessel_info_detections || [],
+        vessel_info_performed: stage === "info" || Boolean(current?.vessel_info_performed),
+      }));
+      if (stage === "ship") {
+        setShipAnalysisDone(true);
+        setVesselRecordId(null);
+        setVesselDraft((current) => ({
+          ...current,
+          vessel_classifications: [...new Set(data.vessel_classifications || [])].join(" or "),
+        }));
+      } else {
+        setVesselInfoAnalysisDone(true);
+        setVesselDraft((current) => ({
+          ...current,
+          vessel_name: data.vessel_info?.vessel_name || "",
+          port: data.vessel_info?.port || "",
+          imo_number: data.vessel_info?.imo_number || "",
+        }));
+        setVesselRecordId(null);
+      }
+      setVesselDraftDirty(false);
+    } catch (err) {
+      console.error("Vessel analysis error:", err);
+      setResult({ __error: true, message: "Vessel analysis failed. Check the backend and try again." });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitVesselRecord = async () => {
+    if (vesselVideoFile || videoAnalysisDone || (!shipAnalysisDone && !vesselInfoAnalysisDone) || loading || !canWrite) return;
+    const record = {
+      ...(result || {}),
+      image: shipAnalysisDone ? file?.name : null,
+      vessel_info_image: vesselInfoAnalysisDone ? vesselInfoFile?.name : null,
+      vessel_detection_performed: shipAnalysisDone,
+      vessel_info_performed: vesselInfoAnalysisDone,
+      vessel_info: vesselInfoAnalysisDone ? {
+        vessel_name: (vesselDraft.vessel_name || "").trim(),
+        port: (vesselDraft.port || "").trim(),
+        imo_number: (vesselDraft.imo_number || "").trim(),
+      } : null,
+      notes: (vesselDraft.notes || "").trim(),
+      results: shipAnalysisDone
+        ? result?.results || []
+        : [],
+      vessel_classifications: shipAnalysisDone
+        ? parseVesselClassifications(vesselDraft.vessel_classifications)
+        : [],
+      vessel_kinds: shipAnalysisDone ? result?.vessel_kinds || [] : [],
+      count: shipAnalysisDone ? result?.count || 0 : 0,
+      status: shipAnalysisDone ? result?.status || "Analyzed" : "Vessel information analyzed",
+    };
+    const form = new FormData();
+    form.append("record_json", JSON.stringify(record));
+    if (shipAnalysisDone && file) form.append("ship_image", file);
+    if (vesselInfoAnalysisDone && vesselInfoFile) {
+      form.append("vessel_info_image", vesselInfoFile);
+    }
+    try {
+      setLoading(true);
+      const { data } = await axios.post(
+        `${API_BASE_URL}/vessel-detection-records`,
+        form,
+        { headers: { "Content-Type": "multipart/form-data" } },
+      );
+      if (data?.error) {
+        setResult((current) => ({ ...current, __saveError: data.error }));
+        return;
+      }
+      setVesselRecordId(data.record.record_id);
+      setVesselHistoryStorage(data.storage || vesselHistoryStorage);
+      setVesselDraftDirty(false);
+      setResult((current) => ({
+        ...current,
+        record_id: data.record.record_id,
+        cloudinary_images: data.record.cloudinary_images,
+        __saveSuccess: `Record saved to ${data.storage}.`,
+      }));
+      await fetchVesselHistory();
+    } catch (error) {
+      console.error("Failed to save vessel record:", error);
+      setResult((current) => ({
+        ...current,
+        __saveError: "Could not save the record and upload its images. Check Cloudinary configuration.",
+      }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateVesselRecord = async (recordId, draft) => {
+    const classifications = parseVesselClassifications(draft.vessel_classifications || "");
+    const updates = {
+      vessel_info: {
+        vessel_name: (draft.vessel_name || "").trim() || null,
+        port: (draft.port || "").trim() || null,
+        imo_number: (draft.imo_number || "").trim() || null,
+      },
+      vessel_classifications: classifications,
+      results: draft.results || [],
+      notes: (draft.notes || "").trim(),
+    };
+    const { data } = await axios.put(
+      `${API_BASE_URL}/vessel-detection-history/${recordId}`,
+      updates,
+    );
+    if (data?.error) throw new Error(data.error);
+    return data.record;
+  };
+
+  const saveVesselRecordEdits = async () => {
+    if (!vesselRecordId || loading) return;
+    try {
+      setLoading(true);
+      await updateVesselRecord(vesselRecordId, {
+        ...vesselDraft,
+        results: result?.results || [],
+      });
+      setVesselDraftDirty(false);
+      setResult((current) => ({ ...current, __saveSuccess: "Saved vessel record updated." }));
+      await fetchVesselHistory();
+    } catch (error) {
+      console.error("Failed to update vessel record:", error);
+      setResult((current) => ({ ...current, __saveError: "Could not update the saved vessel record." }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startEditingVesselRecord = (item) => {
+    setEditingVesselRecordId(item.record_id);
+    setEditingVesselDraft({
+      vessel_name: item.vessel_info?.vessel_name || "",
+      port: item.vessel_info?.port || "",
+      imo_number: item.vessel_info?.imo_number || "",
+      vessel_classifications: (item.vessel_classifications || []).join(" or "),
+      notes: item.notes || "",
+      results: item.results || [],
+    });
+  };
+
+  const saveEditedVesselHistoryRecord = async () => {
+    try {
+      await updateVesselRecord(editingVesselRecordId, editingVesselDraft);
+      setEditingVesselRecordId(null);
+      setEditingVesselDraft(null);
+      await fetchVesselHistory();
+    } catch (error) {
+      console.error("Failed to update vessel history record:", error);
+      setVesselHistoryError("Could not update the selected vessel record.");
+    }
+  };
+
+  const deleteVesselHistoryRecord = async (recordId) => {
+    if (!canWrite || !window.confirm("Delete this saved vessel record?")) return;
+    try {
+      const { data } = await axios.delete(
+        `${API_BASE_URL}/vessel-detection-history/${recordId}`,
+      );
+      if (data?.error) throw new Error(data.error);
+      setVesselHistory((current) => current.filter((item) => item.record_id !== recordId));
+      if (vesselRecordId === recordId) setVesselRecordId(null);
+    } catch (error) {
+      console.error("Failed to delete vessel history record:", error);
+      setVesselHistoryError(error.response?.data?.error || "Could not delete the vessel record.");
     }
   };
 
@@ -687,7 +1006,7 @@ useEffect(() => {
       const width = (x2 - x1) * scaleX;
       const height = (y2 - y1) * scaleY;
       const boxColor = detection.label === "Local Ship" ? "#00ffb3" : "#a78bfa";
-      const label = `${detection.label} ${detection.confidence}%`;
+      const label = detection.label;
       const labelHeight = Math.max(24, image.naturalWidth / 32);
       const labelWidth = context.measureText(label).width + 16;
       context.strokeStyle = boxColor;
@@ -2038,58 +2357,141 @@ const generateSeaStatePDF = () => {
             ══════════════════════════ */}
         {activeModule === "boat" && (
           <div className="result-body">
-            {isVideo ? (
-              result.video_detections?.length > 0 ? (
-                <>
-                  <div className="boat-analysis-summary" style={{ borderColor: mod.colorMid }}>
-                    <div><span>VIDEO FRAMES</span><strong>{result.frame_count}</strong></div>
-                    <div><span>OBJECT TYPES</span><strong>{result.video_detections.length}</strong></div>
-                    <div><span>STATUS</span><strong>{result.status}</strong></div>
+            {result.video_analysis_performed && (
+              <section className="vessel-info-panel vessel-video-results" style={{ borderColor: mod.colorMid }}>
+                <div className="vessel-info-heading">
+                  <h3>VIDEO VESSEL ANALYSIS · {result.video || vesselVideoFile?.name}</h3>
+                  <span className="vessel-model-chip">VIDEO · NOT SAVED</span>
+                </div>
+                <p className="vessel-video-note">
+                  Video is analyzed locally, one frame per second. Neither the video nor its frames are sent to Cloudinary or saved in the database.
+                </p>
+                <div className="boat-analysis-summary" style={{ borderColor: mod.colorMid }}>
+                  <div>
+                    <span>VIDEO LENGTH</span>
+                    <strong>{result.video_duration_seconds}s</strong>
                   </div>
-                  <div className="vessel-list">
-                    {result.video_detections.map((det, index) => (
-                      <div key={`${det.label}-${index}`} className="vessel-item" style={{ borderColor: mod.colorMid }}>
-                        <div className="vessel-index" style={{ background: mod.colorDim, color: mod.color }}>
-                          <Crosshair size={12} /> {index + 1}
-                        </div>
-                        <span className="vessel-label">{det.label}</span>
-                        <span className="vessel-conf" style={{ color: mod.color }}>{det.frames_detected} frames</span>
+                  <div>
+                    <span>FRAMES ANALYZED</span>
+                    <strong>{result.frames_analyzed}</strong>
+                  </div>
+                  <div>
+                    <span>VESSEL OBJECTS</span>
+                    <strong>{result.count}</strong>
+                  </div>
+                </div>
+                {result.vessel_classifications?.length ? (
+                  <div className="vessel-detected-types">
+                    {result.vessel_classifications.map((type) => (
+                      <span className="vessel-detected-type" key={type}>
+                        <Ship size={19} strokeWidth={1.7} />
+                        {type}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-result">
+                    <Ship size={34} opacity={0.25} />
+                    <p>No vessels were detected in the sampled frames.</p>
+                  </div>
+                )}
+                {result.frames?.length > 0 && (
+                  <div className="vessel-video-frame-list">
+                    {result.frames.map((frame) => (
+                      <div className="vessel-video-frame" key={frame.time_seconds}>
+                        <span className="vessel-video-time">
+                          <Film size={13} /> {frame.time_seconds}s
+                        </span>
+                        <span>
+                          {frame.detections?.length
+                            ? [...new Set(frame.detections.map((detection) => detection.label))].join(" or ")
+                            : "No vessel detected"}
+                        </span>
                       </div>
                     ))}
                   </div>
-                </>
-              ) : (
-                <div className="empty-result">
-                  <Ship size={38} opacity={0.2} />
-                  <p>No vessels detected in this video.</p>
+                )}
+              </section>
+            )}
+            {result.vessel_info && (
+              <section className="vessel-info-panel" style={{ borderColor: mod.colorMid }}>
+                <div className="vessel-info-heading">
+                  <h3>VESSEL IDENTITY · {result.vessel_info_image || "BACKSIDE IMAGE"}</h3>
+                  {result.vessel_info_performed && <span className="vessel-model-chip">OCR MODEL</span>}
                 </div>
-              )
-            ) : cleanVesselDetections.length > 0 ? (
+                {vesselInfoPreview && (
+                  <img
+                    className="vessel-result-thumb"
+                    src={vesselInfoPreview}
+                    alt="Uploaded vessel backside"
+                  />
+                )}
+                <div className="vessel-info-grid">
+                  {[
+                    ["VESSEL NAME", result.vessel_info.vessel_name],
+                    ["PORT", result.vessel_info.port],
+                    ["IMO NUMBER", result.vessel_info.imo_number],
+                  ].map(([label, value]) => (
+                    <div className="vessel-info-field" key={label}>
+                      <span>{label}</span>
+                      <strong>{value || "Not read"}</strong>
+                    </div>
+                  ))}
+                </div>
+                {result.vessel_info_detections?.length > 0 && (
+                  <div className="vessel-ocr-detections">
+                    {result.vessel_info_detections.map((item, index) => (
+                      <span className="vessel-ocr-chip" key={`${item.field}-${index}`}>
+                        {item.field.replaceAll("_", " ")} · {item.text || "Text not read"}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+            {!result.video_analysis_performed && result.vessel_detection_performed && cleanVesselDetections.length > 0 ? (
               <>
+                <section className="vessel-info-panel vessel-type-heading" style={{ borderColor: mod.colorMid }}>
+                  <div className="vessel-info-heading">
+                    <h3>VESSEL TYPE MODEL · {result.image || "UPLOADED IMAGE"}</h3>
+                    <span className="vessel-model-chip">SHIP-DETECTION</span>
+                  </div>
+                  {preview && (
+                    <img className="vessel-result-thumb" src={preview} alt="Analyzed vessel image" />
+                  )}
+                  <div className="vessel-detected-types">
+                    {[...new Set(cleanVesselDetections.map((item) => item.label))].map((type) => (
+                      <span className="vessel-detected-type" key={type}>
+                        <Ship size={19} strokeWidth={1.7} />
+                        {type}
+                      </span>
+                    ))}
+                  </div>
+                </section>
                 <div className="boat-analysis-summary" style={{ borderColor: mod.colorMid }}>
                   <div>
-                    <span>VESSEL</span>
-                    <strong>{cleanVesselDetections.filter((item) => item.detection_type !== "flag" && item.label?.trim().toLowerCase() !== "sl flag").length}</strong>
+                    <span>OBJECTS FOUND</span>
+                    <strong>{cleanVesselDetections.length}</strong>
                   </div>
                   <div>
-                    <span>SL FLAG</span>
-                    <strong>{cleanVesselDetections.filter((item) => item.detection_type === "flag" || item.label?.trim().toLowerCase() === "sl flag").length}</strong>
+                    <span>VESSEL TYPES</span>
+                    <strong>{new Set(cleanVesselDetections.map((item) => item.label)).size}</strong>
                   </div>
                   <div>
                     <span>TOTAL OBJECTS</span>
-                    <strong>{cleanVesselDetections.length}</strong>
+                    <strong>{result.count ?? cleanVesselDetections.length}</strong>
                   </div>
                 </div>
                 <div className="result-primary-row">
                   <div className="result-pred-block" style={{ borderColor: mod.colorMid }}>
                     <p className="rpb-eye">VESSELS DETECTED</p>
-                    <p className="rpb-val" style={{ color: mod.color }}>{cleanVesselDetections.filter((item) => item.detection_type !== "flag" && item.label?.trim().toLowerCase() !== "sl flag").length}</p>
+                    <p className="rpb-val" style={{ color: mod.color }}>{cleanVesselDetections.length}</p>
                     <p className="rpb-sub">Objects identified in frame</p>
                   </div>
                   <div className="vessel-count-badge"
                     style={{ color: mod.color, borderColor: mod.colorMid, background: mod.colorDim }}>
                     <Ship size={26} strokeWidth={1.5} />
-                    <span>{cleanVesselDetections.filter((item) => item.detection_type !== "flag" && item.label?.trim().toLowerCase() !== "sl flag").length} FOUND</span>
+                    <span>{cleanVesselDetections.length} FOUND</span>
                   </div>
                 </div>
 
@@ -2100,8 +2502,8 @@ const generateSeaStatePDF = () => {
                         style={{ background: mod.colorDim, color: mod.color }}>
                         <Crosshair size={12} /> {i + 1}
                       </div>
+                      <span className="vessel-kind-chip">{det.vessel_kind || "Vessel"}</span>
                       <span className="vessel-label">{det.label}</span>
-                      <span className="vessel-conf" style={{ color: mod.color }}>{det.confidence}%</span>
                     </div>
                   ))}
                 </div>
@@ -2115,11 +2517,100 @@ const generateSeaStatePDF = () => {
                   <Download size={14} /> DOWNLOAD ANNOTATED IMAGE
                 </button>
               </>
-            ) : (
+            ) : !result.video_analysis_performed && result.vessel_detection_performed ? (
               <div className="empty-result">
                 <Ship size={38} opacity={0.2} />
                 <p>No vessels detected in this frame.</p>
               </div>
+            ) : null}
+
+            {!result.video_analysis_performed && !vesselVideoFile && (shipAnalysisDone || vesselInfoAnalysisDone) && (
+              <section className="vessel-review-panel" style={{ borderColor: mod.colorMid }}>
+                <div className="vessel-info-heading">
+                  <h3>FINAL VESSEL RECORD · REVIEW & EDIT</h3>
+                  <span className="vessel-model-chip">DRAFT</span>
+                </div>
+                <p className="vessel-review-hint">
+                  Check or correct the detected values before submitting. Images are sent to Cloudinary only when you submit this record.
+                </p>
+                <div className="vessel-edit-grid">
+                  <label>
+                    <span>VESSEL NAME</span>
+                    <input
+                      value={vesselDraft.vessel_name}
+                      onChange={(event) => {
+                        setVesselDraft((current) => ({ ...current, vessel_name: event.target.value }));
+                        setVesselDraftDirty(true);
+                      }}
+                    />
+                  </label>
+                  <label>
+                    <span>PORT</span>
+                    <input
+                      value={vesselDraft.port}
+                      onChange={(event) => {
+                        setVesselDraft((current) => ({ ...current, port: event.target.value }));
+                        setVesselDraftDirty(true);
+                      }}
+                    />
+                  </label>
+                  <label>
+                    <span>IMO NUMBER</span>
+                    <input
+                      value={vesselDraft.imo_number}
+                      onChange={(event) => {
+                        setVesselDraft((current) => ({ ...current, imo_number: event.target.value }));
+                        setVesselDraftDirty(true);
+                      }}
+                      placeholder="IMO 9074729"
+                    />
+                  </label>
+                  <label>
+                    <span>DETECTED VESSEL TYPES</span>
+                    <input
+                      value={vesselDraft.vessel_classifications}
+                      onChange={(event) => {
+                        setVesselDraft((current) => ({ ...current, vessel_classifications: event.target.value }));
+                        setVesselDraftDirty(true);
+                      }}
+                      placeholder="Merchant Ship or Fishing Boat"
+                      disabled={!shipAnalysisDone}
+                    />
+                  </label>
+                  <label className="vessel-notes-field">
+                    <span>NOTES</span>
+                    <textarea
+                      value={vesselDraft.notes}
+                      onChange={(event) => {
+                        setVesselDraft((current) => ({ ...current, notes: event.target.value }));
+                        setVesselDraftDirty(true);
+                      }}
+                      rows={3}
+                    />
+                  </label>
+                </div>
+                {result.__saveError && <p className="vessel-save-message vessel-save-message--error">{result.__saveError}</p>}
+                {result.__saveSuccess && <p className="vessel-save-message">{result.__saveSuccess}</p>}
+                {vesselRecordId ? (
+                  <button
+                    type="button"
+                    className="vessel-submit-record"
+                    onClick={saveVesselRecordEdits}
+                    disabled={!vesselDraftDirty || loading || !canWrite}
+                  >
+                    {loading ? "SAVING…" : "UPDATE SAVED RECORD"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="vessel-submit-record"
+                    onClick={submitVesselRecord}
+                    disabled={loading || !canWrite}
+                  >
+                    {loading ? "UPLOADING IMAGES & SAVING…" : "SUBMIT IMAGES & DETAILS"}
+                  </button>
+                )}
+              </section>
             )}
 
           </div>
@@ -2508,13 +2999,13 @@ const generateSeaStatePDF = () => {
           {/* ─── PANEL 1: Upload ─── */}
           <section className="a-card upload-card">
             <div className="a-card-header">
-              <span className="a-card-label"><Upload size={11} /> INPUT IMAGE</span>
+              <span className="a-card-label"><Upload size={11} /> {activeModule === "boat" ? "VESSEL IMAGE OR VIDEO" : "INPUT IMAGE"}</span>
               <span className="a-card-tag" style={{ color: mod.color }}>{mod.statusLabel}</span>
             </div>
 
             {/* Drag-and-drop zone */}
             <label
-              className={`drop-zone ${dragOver ? "dz--over" : ""} ${file ? "dz--filled" : ""} ${!canWrite ? "dz--readonly" : ""}`}
+              className={`drop-zone ${dragOver ? "dz--over" : ""} ${(file || vesselVideoFile) ? "dz--filled" : ""} ${!canWrite ? "dz--readonly" : ""}`}
               style={dragOver ? { borderColor: mod.color } : {}}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
@@ -2523,13 +3014,19 @@ const generateSeaStatePDF = () => {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept={activeModule === "boat" ? "image/*,video/*" : "image/*"}
+                accept={activeModule === "boat" ? "image/*,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm" : "image/*"}
                 onClick={(e) => { e.currentTarget.value = ""; }}
                 onChange={handleFileChange}
                 disabled={!canWrite}
               />
 
-              {file ? (
+              {vesselVideoFile ? (
+                <div className="dz-loaded">
+                  <Film size={24} style={{ color: mod.color }} />
+                  <p className="dz-fname">{vesselVideoFile.name}</p>
+                  <p className="dz-change">Video is analyzed temporarily and is never saved to the database</p>
+                </div>
+              ) : file ? (
                 <div className="dz-loaded">
                   <CheckCircle2 size={24} style={{ color: mod.color }} />
                   <p className="dz-fname">{file.name}</p>
@@ -2540,12 +3037,88 @@ const generateSeaStatePDF = () => {
                   <div className="dz-upload-icon">
                     <Upload size={24} style={{ color: mod.color }} />
                   </div>
-                  <p className="dz-main">Drop {activeModule === "boat" ? "image or video" : "image"} here</p>
+                  <p className="dz-main">Drop {activeModule === "boat" ? "vessel image or video" : "image"} here</p>
                   <p className="dz-sub">or click to browse</p>
-                  <p className="dz-fmt">{activeModule === "boat" ? "PNG · JPG · MP4 · MOV · AVI" : "PNG · JPG · JPEG · BMP"}</p>
+                  <p className="dz-fmt">{activeModule === "boat" ? "IMAGE · MP4 · MOV · AVI · MKV · WEBM · MAX 100 MB / 5 MIN" : "PNG · JPG · JPEG · BMP · WEBP"}</p>
                 </div>
               )}
             </label>
+            {activeModule === "boat" && (
+              <div className="vessel-stage-actions">
+                <button
+                  type="button"
+                  className="run-btn vessel-stage-btn"
+                  style={{ "--mc": mod.color }}
+                  onClick={() => runVesselAnalysis(vesselVideoFile ? "video" : "ship")}
+                  disabled={(!file && !vesselVideoFile) || loading || !canWrite}
+                >
+                  {loading && (file || vesselVideoFile) ? <Loader size={14} className="spin" /> : <ScanEye size={14} />}
+                  {vesselVideoFile
+                    ? videoAnalysisDone ? "RE-ANALYZE VIDEO" : "1 · ANALYZE VIDEO"
+                    : shipAnalysisDone ? "RE-ANALYZE VESSEL TYPE" : "1 · ANALYZE VESSEL TYPE"}
+                </button>
+                {shipAnalysisDone && <span className="vessel-stage-complete">TYPE ANALYSIS READY</span>}
+                {videoAnalysisDone && <span className="vessel-stage-complete">VIDEO ANALYSIS READY · NOT SAVED</span>}
+                {vesselVideoFile && (
+                  <button type="button" className="vessel-clear-input" onClick={clearVesselVideo}>
+                    <X size={13} /> REMOVE VIDEO
+                  </button>
+                )}
+                {file && (
+                  <button type="button" className="vessel-clear-input" onClick={clearVesselImage}>
+                    <X size={13} /> REMOVE VESSEL IMAGE
+                  </button>
+                )}
+              </div>
+            )}
+
+            {activeModule === "boat" && !vesselVideoFile && (
+              <div className="vessel-info-upload">
+                <p className="vessel-info-upload-title">BACKSIDE PHOTO · NAME / PORT / IMO · OPTIONAL</p>
+                <label className={`drop-zone ${vesselInfoFile ? "dz--filled" : ""} ${!canWrite ? "dz--readonly" : ""}`}>
+                  <input
+                    ref={vesselInfoFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onClick={(e) => { e.currentTarget.value = ""; }}
+                    onChange={handleVesselInfoFileChange}
+                    disabled={!canWrite}
+                  />
+                  {vesselInfoFile ? (
+                    <div className="dz-loaded vessel-info-upload-loaded">
+                      {vesselInfoPreview && <img src={vesselInfoPreview} alt="Vessel backside preview" />}
+                      <p className="dz-fname">{vesselInfoFile.name}</p>
+                      <p className="dz-change">Click to change backside photo</p>
+                    </div>
+                  ) : (
+                    <div className="dz-empty">
+                      <div className="dz-upload-icon"><Upload size={20} style={{ color: mod.color }} /></div>
+                      <p className="dz-main">Upload clear backside image</p>
+                      <p className="dz-sub">Used separately for vessel text detection and OCR</p>
+                      <p className="dz-fmt">PNG · JPG · JPEG · BMP · WEBP</p>
+                    </div>
+                  )}
+                </label>
+                <div className="vessel-stage-actions">
+                  <button
+                    type="button"
+                    className="run-btn vessel-stage-btn"
+                    style={{ "--mc": mod.color }}
+                    onClick={() => runVesselAnalysis("info")}
+                    disabled={!vesselInfoFile || loading || !canWrite}
+                  >
+                    {loading && vesselInfoFile ? <Loader size={14} className="spin" /> : <ScanEye size={14} />}
+                    {vesselInfoAnalysisDone ? "RE-ANALYZE VESSEL DETAILS" : "2 · READ NAME / PORT / IMO"}
+                  </button>
+                  {vesselInfoAnalysisDone && <span className="vessel-stage-complete">DETAIL ANALYSIS READY</span>}
+                  {vesselInfoFile && (
+                  <button type="button" className="vessel-clear-input" onClick={clearVesselInfoImage}>
+                    <X size={13} /> REMOVE BACKSIDE PHOTO
+                  </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {activeModule === "sea" && (
               <label className="sea-enhancement-toggle">
@@ -2559,7 +3132,7 @@ const generateSeaStatePDF = () => {
               </label>
             )}
 
-            <button
+            {activeModule !== "boat" && <button
               className="run-btn"
               style={{ "--mc": mod.color, "--mc-dim": mod.colorDim }}
               onClick={runPrediction}
@@ -2568,7 +3141,7 @@ const generateSeaStatePDF = () => {
               {loading
                 ? <><Loader size={15} className="spin" /> ANALYZING…</>
                 : <><Zap size={15} /> RUN ANALYSIS</>}
-            </button>
+            </button>}
           </section>
 
           {/* ─── PANEL 2: Preview ─── */}
@@ -2596,33 +3169,24 @@ const generateSeaStatePDF = () => {
             </div>
 
             <div className="preview-area">
-              {preview ? (
+              {activeModule === "boat" && vesselVideoPreview ? (
+                <video
+                  src={vesselVideoPreview}
+                  className={`preview-img preview-img--${mediaFit}`}
+                  controls
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
+              ) : preview ? (
                 <div className="preview-img-wrap">
-  {isVideo ? (
-                    <>
-                      <video
-                        src={analysedVideoUrl || preview}
-                        className={`preview-img preview-img--${mediaFit}`}
-                        controls
-                        muted
-                        playsInline
-                        onError={() => setVideoPreviewError(true)}
-                      />
-                      {videoPreviewError && (
-                        <p className="video-preview-error">
-                          Analysed video cannot be played in this browser.
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <img
-                      src={preview}
-                      alt="Preview"
-                      className={`preview-img preview-img--${mediaFit}`}
-                    />
-                  )}
+                  <img
+                    src={preview}
+                    alt="Preview"
+                    className={`preview-img preview-img--${mediaFit}`}
+                  />
 
-                  {activeModule === "boat" && !loading && !isVideo && (
+                  {activeModule === "boat" && !loading && (
                     <BoatDetectionOverlay
                       result={result}
                       color={mod.color}
@@ -2694,37 +3258,176 @@ const generateSeaStatePDF = () => {
         {activeModule === "boat" && (
           <section className="a-card vessel-history-panel">
             <div className="sea-history-header">
-              <p className="sea-feature-title">VESSEL DETECTION HISTORY</p>
+              <div>
+                <p className="sea-feature-title">VESSEL DETECTION RECORDS</p>
+                <p className="vessel-storage-status">STORAGE · {vesselHistoryStorage.toUpperCase()}</p>
+              </div>
               <div className="sea-history-actions">
                 <button onClick={fetchVesselHistory} disabled={vesselHistoryLoading}>
                   {vesselHistoryLoading ? "LOADING…" : "REFRESH"}
                 </button>
-                <button className="danger" onClick={clearVesselHistory} disabled={!canWrite}>CLEAR</button>
               </div>
             </div>
+            {vesselHistoryError && <p className="vessel-save-message vessel-save-message--error">{vesselHistoryError}</p>}
             {vesselHistory.length === 0 ? (
-              <p className="sea-history-empty">No vessel detection history available.</p>
+              <p className="sea-history-empty">No submitted vessel records are available.</p>
             ) : (
-              <div className="sea-history-grid">
-                {vesselHistory.slice(0, 6).map((item, index) => (
-                  <div className="sea-history-card" key={`${item.timestamp}-${item.filename}-${index}`}>
-                    <span>{item.timestamp} · {item.mode}</span>
-                    <strong>{item.vessel_classifications?.length
-                      ? item.vessel_classifications.join(" · ")
-                      : item.vessel_origin || item.results?.find((detection) => detection.detection_type !== "flag")?.label || "Unknown"}</strong>
-                    <p>{item.filename}</p>
-                    <p>{item.status} · {item.count || 0} detected · {item.frame_count ? `${item.frame_count} frames` : "single image"}</p>
-                    <p>{item.estimated_size || "Size unavailable"} · {item.source || "Unknown source"}</p>
-                  </div>
-                ))}
-              </div>
+              <>
+                <div className="vessel-table-scroll">
+                  <table className="vessel-record-table">
+                  <thead>
+                    <tr>
+                      <th>VESSEL / TYPE</th>
+                      <th>IDENTITY DETAILS</th>
+                      <th>IMAGES</th>
+                      <th>STATUS</th>
+                      <th>SUBMITTED</th>
+                      <th>ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vesselHistory.map((item, index) => (
+                      <Fragment key={`${item.timestamp}-${item.record_id || index}`}>
+                        <tr>
+                          <td>
+                            <strong className="vessel-table-primary">
+                              {item.vessel_classifications?.length
+                                ? item.vessel_classifications.join(" or ")
+                                : item.vessel_info?.vessel_name || "Vessel record"}
+                            </strong>
+                            <span className="vessel-table-secondary">
+                              {item.vessel_info?.vessel_name || "Name not identified"}
+                            </span>
+                          </td>
+                          <td>
+                            <span>{item.vessel_info?.port || "Port not identified"}</span>
+                            <span className="vessel-table-secondary">{item.vessel_info?.imo_number || "IMO not identified"}</span>
+                            {item.notes && <span className="vessel-table-secondary">{item.notes}</span>}
+                          </td>
+                          <td>
+                            <div className="vessel-record-images">
+                              {item.image_url && (
+                                <img
+                                  src={item.image_url}
+                                  alt="Vessel"
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => setExpandedHistoryImage({ url: item.image_url, alt: "Vessel" })}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter" || event.key === " ") {
+                                      event.preventDefault();
+                                      setExpandedHistoryImage({ url: item.image_url, alt: "Vessel" });
+                                    }
+                                  }}
+                                />
+                              )}
+                              {item.vessel_info_image_url && (
+                                <img
+                                  src={item.vessel_info_image_url}
+                                  alt="Vessel backside"
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => setExpandedHistoryImage({ url: item.vessel_info_image_url, alt: "Vessel backside" })}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter" || event.key === " ") {
+                                      event.preventDefault();
+                                      setExpandedHistoryImage({ url: item.vessel_info_image_url, alt: "Vessel backside" });
+                                    }
+                                  }}
+                                />
+                              )}
+                              {!item.image_url && !item.vessel_info_image_url && <span>No image</span>}
+                            </div>
+                          </td>
+                          <td><span className="vessel-status-pill">{item.status || "Saved"}</span></td>
+                          <td>{item.timestamp || "—"}</td>
+                          <td>
+                            <div className="vessel-history-controls">
+                              <button onClick={() => startEditingVesselRecord(item)} disabled={!canWrite || !item.record_id}>EDIT</button>
+                              <button className="danger" onClick={() => deleteVesselHistoryRecord(item.record_id)} disabled={!canWrite || !item.record_id}>DELETE</button>
+                            </div>
+                          </td>
+                        </tr>
+                        {editingVesselRecordId === item.record_id && editingVesselDraft && (
+                          <tr className="vessel-table-edit-row">
+                            <td colSpan={6}>
+                              <div className="vessel-history-edit">
+                                {[
+                                  ["vessel_name", "VESSEL NAME"],
+                                  ["port", "PORT"],
+                                  ["imo_number", "IMO NUMBER"],
+                                  ["vessel_classifications", "VESSEL TYPES"],
+                                ].map(([field, label]) => (
+                                  <label key={field}>
+                                    <span>{label}</span>
+                                    <input
+                                      value={editingVesselDraft[field]}
+                                      onChange={(event) => setEditingVesselDraft((current) => ({
+                                        ...current,
+                                        [field]: event.target.value,
+                                      }))}
+                                    />
+                                  </label>
+                                ))}
+                                <label className="vessel-table-notes">
+                                  <span>NOTES</span>
+                                  <textarea
+                                    rows={2}
+                                    value={editingVesselDraft.notes}
+                                    onChange={(event) => setEditingVesselDraft((current) => ({
+                                      ...current,
+                                      notes: event.target.value,
+                                    }))}
+                                  />
+                                </label>
+                                <div className="vessel-history-controls">
+                                  <button onClick={saveEditedVesselHistoryRecord}>SAVE CHANGES</button>
+                                  <button onClick={() => setEditingVesselRecordId(null)}>CANCEL</button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </section>
         )}
           </>
         )}
 
-        {activeModule !== "simulation" && file && canWrite && (
+        {expandedHistoryImage && (
+          <div
+            className="vessel-image-lightbox"
+            role="presentation"
+            onClick={() => setExpandedHistoryImage(null)}
+          >
+            <div
+              className="vessel-image-lightbox__content"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Expanded vessel image"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="vessel-image-lightbox__close"
+                onClick={() => setExpandedHistoryImage(null)}
+                aria-label="Close expanded image"
+              >
+                <X size={16} /> CLOSE
+              </button>
+              <img src={expandedHistoryImage.url} alt={expandedHistoryImage.alt} />
+              <span>{expandedHistoryImage.alt} · CLICK OUTSIDE OR PRESS ESC TO CLOSE</span>
+            </div>
+          </div>
+        )}
+
+        {activeModule !== "simulation" && activeModule !== "boat" && file && canWrite && (
           <div className="mobile-action-dock">
             <button type="button" className="mobile-change-btn" onClick={() => fileInputRef.current?.click()}>
               <Upload size={14} /> CHANGE
