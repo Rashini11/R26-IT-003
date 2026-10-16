@@ -80,13 +80,8 @@ from .auth import (
     router as auth_router,
     require_authenticated_request,
 )
-from .vessel_inspections import (
-    configure_database as configure_vessel_inspection_database,
-    router as vessel_inspections_router,
-)
 
 app.include_router(auth_router)
-app.include_router(vessel_inspections_router)
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
@@ -148,7 +143,6 @@ LABEL_MAP_PATH = os.path.join(
 )
 
 BOAT_MODEL_PATH = BASE_PATH / "backend" / "best.pt"
-ID_NUM_MODEL_PATH = BASE_PATH / "backend" / "id_num_model.pt"
 
 if not BOAT_MODEL_PATH.exists():
     BOAT_MODEL_PATH = BASE_PATH / "model" / "boat_detection.pt"
@@ -187,7 +181,6 @@ radar_prediction_collection = None
 simulation_runs_collection = None
 simulation_events_collection = None
 vessel_prediction_collection = None
-mongo_db = None
 sea_history_backend = "json"
 
 if load_dotenv is not None:
@@ -228,8 +221,6 @@ if MONGO_URI and MongoClient is not None:
         simulation_runs_collection = None
         simulation_events_collection = None
         vessel_prediction_collection = None
-
-configure_vessel_inspection_database(mongo_db)
 
 
 def _load_local_sea_history():
@@ -1591,8 +1582,6 @@ boat_model = None
 VESSEL_CLASS_BOAT = 0
 VESSEL_CLASS_SHIP = 1
 VESSEL_CLASS_SL_FLAG = 2
-VESSEL_CONFIDENCE_THRESHOLD = 0.70
-VESSEL_FLAG_CONFIDENCE_THRESHOLD = 0.50
 
 
 def infer_vessel_origin(detections):
@@ -1710,119 +1699,6 @@ except Exception as e:
     boat_model = None
 
 
-id_num_model = None
-id_text_reader = None
-
-try:
-    if not ID_NUM_MODEL_PATH.exists():
-        print(f"ERROR: ID-number detection weights not found: {ID_NUM_MODEL_PATH}")
-    else:
-        id_num_model = YOLO(str(ID_NUM_MODEL_PATH))
-        print(f"ID-number detection model loaded from: {ID_NUM_MODEL_PATH}")
-except Exception as e:
-    print("ERROR loading ID-number detection model:", e)
-
-
-def read_vessel_id_text(image_path, vessel_boxes):
-    if id_num_model is None:
-        return {
-            "status": "model_unavailable",
-            "readings": [],
-            "message": "The ID-number detection model is not loaded.",
-        }
-
-    try:
-        image = cv2.imread(str(image_path))
-        if image is None:
-            raise ValueError("Uploaded image could not be decoded for ID-text analysis.")
-
-        if not vessel_boxes:
-            return {
-                "status": "no_vessel",
-                "readings": [],
-                "message": "No detected vessel was available for ID-text analysis.",
-            }
-
-        height, width = image.shape[:2]
-        readings = []
-        for vessel_box in vessel_boxes:
-            x1, y1, x2, y2 = [
-                int(round(float(value))) for value in vessel_box
-            ]
-            x1 = max(0, min(x1, width))
-            x2 = max(0, min(x2, width))
-            y1 = max(0, min(y1, height))
-            y2 = max(0, min(y2, height))
-            if x2 <= x1 or y2 <= y1:
-                continue
-
-            vessel_crop = image[y1:y2, x1:x2]
-            detections = id_num_model(
-                vessel_crop,
-                conf=0.25,
-                iou=0.45,
-                save=False,
-                verbose=False,
-            )
-            boxes = detections[0].boxes if detections and len(detections) > 0 else None
-            if boxes is None or len(boxes) == 0:
-                continue
-
-            global id_text_reader
-            if id_text_reader is None:
-                import easyocr
-
-                id_text_reader = easyocr.Reader(["en"], gpu=device.type == "cuda")
-
-            for box in boxes:
-                tx1, ty1, tx2, ty2 = [
-                    int(round(float(value)))
-                    for value in box.xyxy[0].tolist()
-                ]
-                tx1 = max(0, min(tx1, vessel_crop.shape[1]))
-                tx2 = max(0, min(tx2, vessel_crop.shape[1]))
-                ty1 = max(0, min(ty1, vessel_crop.shape[0]))
-                ty2 = max(0, min(ty2, vessel_crop.shape[0]))
-                if tx2 <= tx1 or ty2 <= ty1:
-                    continue
-
-                text_results = id_text_reader.readtext(
-                    vessel_crop[ty1:ty2, tx1:tx2],
-                detail=1,
-                paragraph=False,
-            )
-                for _, text, confidence in text_results:
-                    text = text.strip()
-                    if text:
-                        readings.append({
-                            "text": text,
-                            "confidence": round(float(confidence) * 100, 1),
-                            "box": [
-                                x1 + tx1,
-                                y1 + ty1,
-                                x1 + tx2,
-                                y1 + ty2,
-                            ],
-                        })
-
-        return {
-            "status": "read" if readings else "unreadable",
-            "readings": readings,
-            "message": (
-                "Vessel ID text read successfully."
-                if readings
-                else "An ID-text region was detected, but its characters could not be read."
-            ),
-        }
-    except Exception as e:
-        print("ERROR reading vessel ID text:", e)
-        return {
-            "status": "unavailable",
-            "readings": [],
-            "message": f"ID-text analysis failed: {e}",
-        }
-
-
 @app.get("/demo-boat-detection")
 async def get_demo_boat_detection():
     return build_demo_boat_detection_response()
@@ -1840,7 +1716,6 @@ async def predict_boat_detection(
             )
         }
     
-    tmp_path = None
     try:
         if not file.filename:
             return {
@@ -1879,7 +1754,7 @@ async def predict_boat_detection(
 
         results = boat_model(
             tmp_path,
-            conf=VESSEL_FLAG_CONFIDENCE_THRESHOLD,
+            conf=0.50,
             iou=0.45,
             save=False,
             verbose=False,
@@ -1919,12 +1794,7 @@ async def predict_boat_detection(
                             else 0
                         )
 
-                        min_confidence = (
-                            VESSEL_CONFIDENCE_THRESHOLD
-                            if cls_id in (VESSEL_CLASS_BOAT, VESSEL_CLASS_SHIP)
-                            else VESSEL_FLAG_CONFIDENCE_THRESHOLD
-                        )
-                        if conf < min_confidence:
+                        if conf < 0.50:
                             continue
 
                         label = (
@@ -1947,19 +1817,17 @@ async def predict_boat_detection(
                             e,
                         )
 
+        Path(
+            tmp_path
+        ).unlink(
+            missing_ok=True
+        )
+
         flag_boxes = [
             detection["box"]
             for detection in detections
             if detection["class_id"] == VESSEL_CLASS_SL_FLAG
         ]
-        id_text = read_vessel_id_text(
-            tmp_path,
-            [
-                detection["box"]
-                for detection in detections
-                if detection["class_id"] in (VESSEL_CLASS_BOAT, VESSEL_CLASS_SHIP)
-            ],
-        )
         image_size = None
         if results and len(results) > 0 and results[0].orig_shape:
             image_height, image_width = results[0].orig_shape[:2]
@@ -2020,7 +1888,6 @@ async def predict_boat_detection(
             "results": all_detections,
             "count": len(vessel_detections),
             "image_size": image_size,
-            "id_text": id_text,
             "demo": False,
         }
         save_vessel_prediction_record({
@@ -2044,9 +1911,6 @@ async def predict_boat_detection(
                 f"{str(e)}"
             )
         }
-    finally:
-        if tmp_path:
-            Path(tmp_path).unlink(missing_ok=True)
 
 
 @app.post("/predict-boat-video", dependencies=[Depends(require_authenticated_request)])
@@ -2088,11 +1952,7 @@ async def predict_boat_video(file: UploadFile = File(...)):
             if not success:
                 break
             frame_results = boat_model(
-                frame,
-                conf=VESSEL_FLAG_CONFIDENCE_THRESHOLD,
-                iou=0.45,
-                save=False,
-                verbose=False,
+                frame, conf=0.50, iou=0.45, save=False, verbose=False
             )
             if frame_results:
                 frame_result = frame_results[0]
@@ -2100,14 +1960,9 @@ async def predict_boat_video(file: UploadFile = File(...)):
                     frame_detections = []
                     for box in frame_result.boxes:
                         confidence = float(box.conf.item())
-                        class_id = int(box.cls.item())
-                        min_confidence = (
-                            VESSEL_CONFIDENCE_THRESHOLD
-                            if class_id in (VESSEL_CLASS_BOAT, VESSEL_CLASS_SHIP)
-                            else VESSEL_FLAG_CONFIDENCE_THRESHOLD
-                        )
-                        if confidence < min_confidence:
+                        if confidence < 0.50:
                             continue
+                        class_id = int(box.cls.item())
                         frame_detections.append({
                             "class_id": class_id,
                             "confidence": confidence * 100,
@@ -2806,6 +2661,7 @@ app.include_router(
     simulation_router,
     dependencies=[Depends(require_authenticated_request)],
 )
+
 
 # =====================================================
 # UNIFIED HEALTH ROUTE

@@ -41,12 +41,8 @@ import {
   Navigation,
   UserRoundCog,
   LockKeyhole,
-  ClipboardList,
 } from "lucide-react";
 import LiveSimulation from "./LiveSimulation";
-import LiveVesselTracker from "./vesselTracking/LiveVesselTracker";
-import VesselInspectionPanel from "./VesselInspectionPanel";
-import VesselInspectionHistory from "./VesselInspectionHistory";
 
 import DatabaseViewer from "./DatabaseViewer";
 
@@ -63,9 +59,14 @@ import LogoutButton from "./components/LogoutButton";
 import AdminUsers from "./components/AdminUsers";
 import MediaFitToggle from "./components/MediaFitToggle";
 import ThemeToggle from "./components/ThemeToggle";
-import { API_BASE_URL, useAuth } from "./context/AuthContext";
+import { useAuth } from "./context/AuthContext";
 import { useTheme } from "./context/ThemeContext";
 import "./App.css";
+
+/* ══════════════════════════════════════════════════════════
+   BACKEND CONFIGURATION — do not modify endpoint names
+   ══════════════════════════════════════════════════════════ */
+const API_BASE_URL = "http://localhost:8000";
 
 /* ══════════════════════════════════════════════════════════
    MODULE DEFINITIONS
@@ -114,19 +115,6 @@ const MODULES = {
     colorMid: "#a78bfa55",
     tag: "YOLO · Object Detection",
     statusLabel: "VESSEL TRACKER",
-  },
-  "vessel-history": {
-    id: "vessel-history",
-    label: "Vessel Inspections",
-    title: "Vessel Inspection History",
-    description: "Search operator-verified vessel inspections, review source evidence and corrections, and open securely stored inspection images.",
-    icon: ClipboardList,
-    color: "#a78bfa",
-    lightColor: "#6d4cc7",
-    colorDim: "#a78bfa22",
-    colorMid: "#a78bfa55",
-    tag: "Verified Records",
-    statusLabel: "INSPECTION HISTORY",
   },
   radar: {
     id: "radar",
@@ -502,7 +490,6 @@ function AppContent() {
   const [isVideo, setIsVideo] = useState(false);
   const [analysedVideoUrl, setAnalysedVideoUrl] = useState(null);
   const [videoPreviewError, setVideoPreviewError] = useState(false);
-  const vesselImageUploadRef = useRef(null);
 
   useEffect(() => {
     window.localStorage.setItem("oceaniq-media-fit", mediaFit);
@@ -2135,27 +2122,6 @@ const generateSeaStatePDF = () => {
               </div>
             )}
 
-            {!isVideo && result.id_text && (
-              <div className="sea-feature-card vessel-id-text-card">
-                <p className="sea-feature-title">VESSEL ID TEXT</p>
-                {result.id_text.readings?.length > 0 ? (
-                  <div className="vessel-list">
-                    {result.id_text.readings.map((reading, index) => (
-                      <div
-                        key={`${reading.text}-${index}`}
-                        className="vessel-item"
-                        style={{ borderColor: mod.colorMid }}
-                      >
-                        <span className="vessel-label">{reading.text}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="sea-support-text">{result.id_text.message}</p>
-                )}
-              </div>
-            )}
-
           </div>
         )}
 
@@ -2523,7 +2489,7 @@ const generateSeaStatePDF = () => {
             <LockKeyhole size={14} />
             <div>
               <strong>READ-ONLY ACCESS</strong>
-              <span>You can review available data and history, but analysis uploads, inspection creation, deletes and simulation controls are blocked by the backend.</span>
+              <span>You can review available data and history, but analysis uploads, deletes and simulation controls are blocked by the backend.</span>
             </div>
           </div>
         )}
@@ -2534,45 +2500,13 @@ const generateSeaStatePDF = () => {
           <div className={!canWrite ? "simulation-readonly" : ""}>
             <LiveSimulation mediaFit={mediaFit} onMediaFitChange={setMediaFit} />
           </div>
-        ) : activeModule === "vessel-history" ? (
-          <VesselInspectionHistory />
         ) : (
           <>
-        {activeModule === "boat" && (
-          <>
-            <div className="vessel-section-heading vessel-section-heading--map">
-              <span className="vessel-section-number">01</span>
-              <div>
-                <h2>LIVE VESSEL MAP</h2>
-                <p>Explore vessel positions and choose a map location.</p>
-              </div>
-            </div>
-            <LiveVesselTracker
-              onGoToImageDetection={() =>
-                vesselImageUploadRef.current?.scrollIntoView({
-                  behavior: "smooth",
-                  block: "start",
-                })
-              }
-            />
-            <div className="vessel-section-heading vessel-section-heading--analysis">
-              <span className="vessel-section-number">02</span>
-              <div>
-                <h2>IMAGE &amp; VIDEO ANALYSIS</h2>
-                <p>Upload media, inspect the preview, and run vessel detection.</p>
-              </div>
-            </div>
-          </>
-        )}
-
         {/* ── 3-panel analysis grid ── */}
-        <div className={`analysis-grid ${activeModule === "boat" ? "vessel-analysis-grid" : ""}`}>
+        <div className="analysis-grid">
 
           {/* ─── PANEL 1: Upload ─── */}
-          <section
-            ref={vesselImageUploadRef}
-            className="a-card upload-card"
-          >
+          <section className="a-card upload-card">
             <div className="a-card-header">
               <span className="a-card-label"><Upload size={11} /> INPUT IMAGE</span>
               <span className="a-card-tag" style={{ color: mod.color }}>{mod.statusLabel}</span>
@@ -2758,20 +2692,9 @@ const generateSeaStatePDF = () => {
           </section>
         </div>
         {activeModule === "boat" && (
-          <VesselInspectionPanel
-            file={file}
-            isVideo={isVideo}
-            prediction={result}
-            canWrite={canWrite}
-          />
-        )}
-        {activeModule === "boat" && (
           <section className="a-card vessel-history-panel">
             <div className="sea-history-header">
-              <div className="vessel-history-title">
-                <span className="vessel-section-number">03</span>
-                <p className="sea-feature-title">VESSEL DETECTION HISTORY</p>
-              </div>
+              <p className="sea-feature-title">VESSEL DETECTION HISTORY</p>
               <div className="sea-history-actions">
                 <button onClick={fetchVesselHistory} disabled={vesselHistoryLoading}>
                   {vesselHistoryLoading ? "LOADING…" : "REFRESH"}
