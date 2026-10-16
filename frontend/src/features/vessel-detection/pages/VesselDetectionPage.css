@@ -1,0 +1,41 @@
+.vessel-port-country-lookup {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 8px;
+}
+
+.vessel-port-country-lookup__button,
+.vessel-port-country-lookup__candidates button {
+  width: fit-content;
+  border: 1px solid var(--mc, #a78bfa);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.vessel-port-country-lookup__button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.vessel-port-country-lookup__result,
+.vessel-port-country-lookup__message,
+.vessel-port-country-lookup__candidates p {
+  margin: 0;
+}
+
+.vessel-port-country-lookup__candidates {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+
+.vessel-port-country-lookup__attribution {
+  opacity: 0.7;
+}
+
+.vessel-port-country-lookup__attribution a {
+  color: inherit;
+}
