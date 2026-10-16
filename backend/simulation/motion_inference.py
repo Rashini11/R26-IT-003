@@ -18,41 +18,75 @@ class MultiTaskMotionModel(nn.Module):
     def __init__(
         self,
         input_size: int,
-        model_type: str,
-        hidden_size: int = 128,
-        num_layers: int = 2,
-        dropout: float = 0.2,
+        model_type: str = "gru",
+        hidden_size: int = 24,
+        num_layers: int = 1,
+        dropout: float = 0.45,
         class_count: int = 4,
+        shared_size: int = 32,
     ):
         super().__init__()
-        recurrent_class = nn.GRU if model_type == "gru" else nn.LSTM
+
+        recurrent_class = (
+            nn.GRU
+            if model_type == "gru"
+            else nn.LSTM
+        )
+
         self.recurrent = recurrent_class(
             input_size=input_size,
             hidden_size=hidden_size,
             num_layers=num_layers,
             batch_first=True,
-            dropout=dropout if num_layers > 1 else 0.0,
+            dropout=(
+                dropout
+                if num_layers > 1
+                else 0.0
+            ),
         )
+
         self.shared = nn.Sequential(
-            nn.Linear(hidden_size, 128),
+            nn.Linear(
+                hidden_size,
+                shared_size,
+            ),
             nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(128, 64),
-            nn.ReLU(),
+            nn.Dropout(
+                dropout
+            ),
         )
-        self.position_head = nn.Linear(64, 2)
-        self.speed_head = nn.Linear(64, 1)
-        self.class_head = nn.Linear(64, class_count)
+
+        self.position_head = nn.Linear(
+            shared_size,
+            2,
+        )
+
+        self.speed_head = nn.Linear(
+            shared_size,
+            1,
+        )
+
+        self.class_head = nn.Linear(
+            shared_size,
+            class_count,
+        )
 
     def forward(self, inputs):
-        recurrent_output, _ = self.recurrent(inputs)
-        shared = self.shared(recurrent_output[:, -1, :])
-        return (
-            self.position_head(shared),
-            self.speed_head(shared).squeeze(1),
-            self.class_head(shared),
+        recurrent_output, _ = (
+            self.recurrent(inputs)
         )
 
+        shared = self.shared(
+            recurrent_output[:, -1, :]
+        )
+
+        return (
+            self.position_head(shared),
+            self.speed_head(
+                shared
+            ).squeeze(1),
+            self.class_head(shared),
+        )
 
 def _as_numpy(value: Any) -> np.ndarray:
     if isinstance(value, torch.Tensor):
@@ -112,8 +146,9 @@ class MotionPredictor:
                 model_type=str(checkpoint.get("model_type", "gru")),
                 hidden_size=int(checkpoint.get("hidden_size", 128)),
                 num_layers=int(checkpoint.get("num_layers", 2)),
-                dropout=float(checkpoint.get("dropout", 0.2)),
+                dropout=float(checkpoint.get("dropout", 0.45)),
                 class_count=len(self.class_names),
+                shared_size=int(checkpoint.get("shared_size", 32)),
             ).to(self.device)
             model.load_state_dict(checkpoint["model_state_dict"])
             model.eval()

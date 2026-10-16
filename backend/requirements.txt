@@ -4,9 +4,11 @@ python-multipart
 numpy
 pillow
 opencv-python-headless
+imageio-ffmpeg
 torch
 torchvision
 ultralytics
+easyocr
 tensorflow
 scikit-learn
 pandas

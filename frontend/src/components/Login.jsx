@@ -8,6 +8,7 @@ import {
   Radar,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import ThemeToggle from "./ThemeToggle";
 import "./Login.css";
 
 function Login() {
@@ -79,6 +80,7 @@ function Login() {
 
   return (
     <div className="auth-page">
+      <div className="auth-theme-control"><ThemeToggle /></div>
       <div className="auth-grid" />
       <div className="auth-scanline" />
 

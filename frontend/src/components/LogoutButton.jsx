@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 function LogoutButton() {
@@ -21,19 +22,10 @@ function LogoutButton() {
       onClick={handleLogout}
       disabled={busy}
       title={user?.username ? `Signed in as ${user.username}` : "Sign out"}
-      style={{
-        border: "1px solid rgba(0, 212, 255, 0.28)",
-        background: "rgba(0, 212, 255, 0.08)",
-        color: "#9be8ff",
-        borderRadius: "6px",
-        padding: "7px 10px",
-        fontSize: "11px",
-        letterSpacing: "0.06em",
-        cursor: busy ? "wait" : "pointer",
-        opacity: busy ? 0.65 : 1,
-      }}
+      className="logout-btn"
     >
-      {busy ? "SIGNING OUT" : "LOGOUT"}
+      <LogOut size={13} />
+      <span>{busy ? "SIGNING OUT" : "LOGOUT"}</span>
     </button>
   );
 }

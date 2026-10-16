@@ -1,0 +1,99 @@
+[
+  {
+    "image": "boat-analysis-1792138079596.png",
+    "vessel_info_image": "AM KIRTI-1_JPG.rf.ETQSITy3Sm1MvEVS6Zip.JPG",
+    "vessel_detection_performed": true,
+    "vessel_info_performed": true,
+    "status": "Detected",
+    "confidence": 97,
+    "timestamp": "2026-10-16 15:10:37",
+    "source": "Drone",
+    "estimated_size": "Large Vessel",
+    "vessel_origin": "Unknown",
+    "vessel_classifications": [
+      "Merchant Ship"
+    ],
+    "vessel_kinds": [
+      "Ship"
+    ],
+    "results": [
+      {
+        "class_id": 1,
+        "label": "Merchant Ship",
+        "vessel_kind": "Ship",
+        "confidence": 97,
+        "box": [
+          59.88739013671875,
+          86.41826629638672,
+          730.3253173828125,
+          428.7358703613281
+        ],
+        "detection_type": "vessel"
+      }
+    ],
+    "count": 1,
+    "image_size": [
+      800,
+      495
+    ],
+    "vessel_info": {
+      "vessel_name": "KIrtt aM",
+      "port": "Lnu MONROVIA",
+      "imo_number": "IMO 9832925"
+    },
+    "vessel_info_detections": [
+      {
+        "field": "port",
+        "text": "Lnu MONROVIA",
+        "confidence": 88,
+        "ocr_confidence": 48.8,
+        "box": [
+          66,
+          286,
+          154,
+          325
+        ]
+      },
+      {
+        "field": "vessel_name",
+        "text": "KIrtt aM",
+        "confidence": 86.3,
+        "ocr_confidence": 30,
+        "box": [
+          67,
+          250,
+          161,
+          298
+        ]
+      },
+      {
+        "field": "imo_number",
+        "text": "IMO 9832925",
+        "confidence": 85.6,
+        "ocr_confidence": 35.9,
+        "box": [
+          73,
+          318,
+          143,
+          349
+        ]
+      }
+    ],
+    "demo": false,
+    "notes": "",
+    "record_id": "54aa2bf9b949453282f97d4044b8c948",
+    "module": "vessel",
+    "cloudinary_images": {
+      "ship_image": {
+        "url": "https://res.cloudinary.com/dwe3p0ln/image/upload/v1792143634/oceaniq/vessels/96a28cfc92274d1d9290c96f7ae7c365_ship_image.png",
+        "public_id": "oceaniq/vessels/96a28cfc92274d1d9290c96f7ae7c365_ship_image"
+      },
+      "vessel_info_image": {
+        "url": "https://res.cloudinary.com/dwe3p0ln/image/upload/v1792143637/oceaniq/vessels/d726df128d244b77bd1b2e2ccd9873bb_vessel_info_image.jpg",
+        "public_id": "oceaniq/vessels/d726df128d244b77bd1b2e2ccd9873bb_vessel_info_image"
+      }
+    },
+    "image_url": "https://res.cloudinary.com/dwe3p0ln/image/upload/v1792143634/oceaniq/vessels/96a28cfc92274d1d9290c96f7ae7c365_ship_image.png",
+    "vessel_info_image_url": "https://res.cloudinary.com/dwe3p0ln/image/upload/v1792143637/oceaniq/vessels/d726df128d244b77bd1b2e2ccd9873bb_vessel_info_image.jpg"
+  }
+]
