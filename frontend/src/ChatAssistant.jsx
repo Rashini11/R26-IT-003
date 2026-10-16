@@ -49,7 +49,7 @@ function ProbabilityChart({ chart }) {
       <ul className="chat-chart-list">
         {chart.items.map((item) => {
           const value = Number(item.value) || 0;
-          const width = Math.max(4, Math.round((value / max) * 100));
+          const width = Math.max(0, Math.min(100, chart.unit === "percent" ? value : (value / max) * 100));
           return (
             <li key={item.label} className="chat-chart-row">
               <span className="chat-chart-label">{item.label}</span>
@@ -104,6 +104,10 @@ export default function ChatAssistant() {
   const { canWrite } = useAuth();
   const [messages, setMessages] = useState([]);
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
+  // OCEANIQ_IMAGE_ROUTER_V1
+  const [routingSuggestion, setRoutingSuggestion] = useState(null);
+  const [routingBusy, setRoutingBusy] = useState(false);
+
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -114,6 +118,20 @@ export default function ChatAssistant() {
   const listRef = useRef(null);
   const stickToBottomRef = useRef(true);
   const fileInputRef = useRef(null);
+  // OCEANIQ_CHAT_UI_V2
+  const manualSelectionRef = useRef(false);
+  const uploadRevisionRef = useRef(0);
+  const imageUrlsRef = useRef(new Set());
+  const analysisLockRef = useRef(false);
+  // OCEANIQ_AUTORUN_V1
+  const autoAnalysedFilesRef = useRef(new WeakSet());
+  const latestRunAnalysisRef = useRef(null);
+
+
+  const chooseAnalysis = (component) => {
+    manualSelectionRef.current = true;
+    setSelectedAnalysis(component);
+  };
 
   const appendMessage = useCallback((message) => {
     setMessages((prev) => [...prev, { id: makeId(), at: new Date().toISOString(), ...message }]);
@@ -125,10 +143,10 @@ export default function ChatAssistant() {
       appendMessage({
         role: "assistant",
         kind: "welcome",
-        text: data.summary,
+        text: "Welcome to OceanIQ. Upload an image and I will identify its component, run the matching analysis and show the result. Manual override is available.",
         analysisChoices: data.analysis_choices,
         actions: data.follow_up_actions,
-        limitations: data.limitations,
+        limitations: ["Experimental image router; unsupported-image detection is limited. No LLM is used."],
       });
       setStatusText("Chat assistant ready.");
     } catch (error) {
@@ -149,16 +167,15 @@ export default function ChatAssistant() {
   }, [loadWelcome]);
 
   useEffect(() => {
+    const urls = imageUrlsRef.current;
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      urls.forEach((url) => URL.revokeObjectURL(url));
+      urls.clear();
     };
-  }, [previewUrl]);
+  }, []);
 
-  useEffect(() => {
-    const node = listRef.current;
-    if (!node || !stickToBottomRef.current) return;
-    node.scrollTop = node.scrollHeight;
-  }, [messages, busy]);
+  // The page owns scrolling. New responses do not move a reader away
+  // from older messages; no nested conversation scrollbar is used.
 
   const onScroll = () => {
     const node = listRef.current;
@@ -178,8 +195,18 @@ export default function ChatAssistant() {
       setStatusText("Rejected non-image upload.");
       return;
     }
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (busy) return;
+    if (nextFile.size > 10 * 1024 * 1024) {
+      appendMessage({ role: "assistant", kind: "error",
+        text: "Please choose an image under 10 MB." });
+      return;
+    }
+    uploadRevisionRef.current += 1;
+    manualSelectionRef.current = false;
+    setSelectedAnalysis(null);
+    setRoutingSuggestion(null);
     const url = URL.createObjectURL(nextFile);
+    imageUrlsRef.current.add(url);
     setFile(nextFile);
     setPreviewUrl(url);
     appendMessage({
@@ -193,7 +220,7 @@ export default function ChatAssistant() {
       appendMessage({
         role: "assistant",
         kind: "needs_selection",
-        text: "Which analysis should run on this image? Automatic image-type recognition is not available in this version.",
+        text: "Checking the image type. The matching component will be detected and analysed automatically.",
         analysisChoices: ANALYSIS_OPTIONS,
       });
     }
@@ -201,7 +228,11 @@ export default function ChatAssistant() {
   };
 
   const clearImage = () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    uploadRevisionRef.current += 1;
+    manualSelectionRef.current = false;
+    setSelectedAnalysis(null);
+    setRoutingSuggestion(null);
+    setRoutingBusy(false);
     setFile(null);
     setPreviewUrl(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -209,6 +240,9 @@ export default function ChatAssistant() {
   };
 
   const clearConversation = () => {
+    if (busy) return;
+    imageUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    imageUrlsRef.current.clear();
     setMessages([]);
     setPinnedResultId(null);
     setResultCount(0);
@@ -220,6 +254,62 @@ export default function ChatAssistant() {
     setStatusText("Conversation cleared.");
   };
 
+
+  // Obtain a suggestion for each new upload; component inference still
+  // requires an explicit user action. Ignore obsolete upload responses.
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const revision = uploadRevisionRef.current;
+    setRoutingSuggestion(null);
+
+    if (!file || !canWrite) {
+      setRoutingBusy(false);
+      return () => {
+        active = false;
+        controller.abort();
+      };
+    }
+
+    setRoutingBusy(true);
+    const form = new FormData();
+    form.append("file", file);
+
+    axios.post(`${API_BASE_URL}/chat/route`, form, {
+      signal: controller.signal,
+    }).then(({ data }) => {
+      if (!active || revision !== uploadRevisionRef.current) return;
+      const validComponent = ANALYSIS_OPTIONS.some(
+        (option) => option.id === data.suggested_component
+      );
+      const detected = validComponent && data.status === "needs_confirmation";
+      if (detected && !manualSelectionRef.current) {
+        setSelectedAnalysis(data.suggested_component);
+      }
+      setRoutingSuggestion({
+        ...data, sourceFile: file,
+        message: detected
+          ? `Detected image type: ${data.label}. The matching component is selected automatically. The matching analysis starts automatically unless you override the component.`
+          : data.message,
+      });
+      setStatusText(detected ? `Detected ${data.label}. Preparing analysis…` : data.message);
+    }).catch((error) => {
+      if (!active || revision !== uploadRevisionRef.current || error?.code === "ERR_CANCELED") return;
+      setRoutingSuggestion({
+        status: "unavailable",
+        sourceFile: file,
+        message: "Suggestion unavailable. Choose an analysis manually.",
+      });
+    }).finally(() => {
+      if (active && revision === uploadRevisionRef.current) setRoutingBusy(false);
+    });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [file, canWrite]);
+
   const runAnalysis = async (analysisOverride = null) => {
     const analysis = analysisOverride || selectedAnalysis;
     if (!canWrite) {
@@ -230,7 +320,11 @@ export default function ChatAssistant() {
       });
       return;
     }
-    if (busy) return;
+    if (busy || analysisLockRef.current) return;
+    if (routingBusy) {
+      setStatusText("Checking image type. Please wait.");
+      return;
+    }
     if (!file) {
       appendMessage({
         role: "assistant",
@@ -243,15 +337,18 @@ export default function ChatAssistant() {
       appendMessage({
         role: "assistant",
         kind: "needs_selection",
-        text: "Select an analysis type before submission. Automatic routing is unavailable.",
+        text: "Wait for image detection or choose a component manually before analysis.",
         analysisChoices: ANALYSIS_OPTIONS,
       });
       return;
     }
 
+    analysisLockRef.current = true;
     setBusy(true);
+    const processingId = makeId();
     setStatusText("Running analysis…");
     appendMessage({
+      id: processingId,
       role: "assistant",
       kind: "processing",
       text: `Running ${ANALYSIS_OPTIONS.find((item) => item.id === analysis)?.label || analysis}…`,
@@ -299,9 +396,38 @@ export default function ChatAssistant() {
       });
       setStatusText("Analysis request failed.");
     } finally {
+      setMessages((previous) => previous.filter((message) => message.id !== processingId));
+      analysisLockRef.current = false;
       setBusy(false);
     }
   };
+
+
+  // Use the latest request function without rerunning because it changed.
+  latestRunAnalysisRef.current = runAnalysis;
+
+  useEffect(() => {
+    if (
+      !file || !canWrite || busy || routingBusy ||
+      analysisLockRef.current ||
+      manualSelectionRef.current ||
+      routingSuggestion?.sourceFile !== file ||
+      routingSuggestion?.status !== "needs_confirmation"
+    ) return;
+
+    const component = routingSuggestion.suggested_component;
+    if (!ANALYSIS_OPTIONS.some((option) => option.id === component)) return;
+
+    // At most one automatic component analysis per uploaded File object.
+    if (autoAnalysedFilesRef.current.has(file)) return;
+    autoAnalysedFilesRef.current.add(file);
+
+    setSelectedAnalysis(component);
+    setMessages((previous) =>
+      previous.filter((message) => message.kind !== "needs_selection")
+    );
+    latestRunAnalysisRef.current?.(component);
+  }, [file, canWrite, busy, routingBusy, routingSuggestion]);
 
   const findResultPayload = (resultId) => {
     const match = [...messages]
@@ -312,7 +438,7 @@ export default function ChatAssistant() {
 
   const runFollowUp = async (action, resultId = null) => {
     if (ANALYSIS_OPTIONS.some((item) => item.id === action)) {
-      setSelectedAnalysis(action);
+      chooseAnalysis(action);
       const label = ANALYSIS_OPTIONS.find((item) => item.id === action).label;
       appendMessage({
         role: "user",
@@ -436,9 +562,8 @@ export default function ChatAssistant() {
             Analyse a maritime image with <span>OceanIQ.</span>
           </h2>
           <p>
-            Choose an analysis lens, add your image, and receive a focused readout from the real
-            hull, sea-state, vessel or radar model. Automatic image-type routing is not available
-            in this version.
+            Upload an image. OceanIQ identifies its type, runs the matching component,
+            and displays the result in this conversation. Manual override remains available.
           </p>
         </div>
         <div className="chat-hero-card">
@@ -482,7 +607,7 @@ export default function ChatAssistant() {
                   <div className="chat-radar" aria-hidden="true" />
                   <h3>Start with an image</h3>
                   <p>
-                    Upload a maritime frame and select one analysis lens. Results appear here as a
+                    Upload a maritime image to detect its component. Results appear here as a
                     concise operational brief. Radar, sea-surface, hull and vessel imagery are
                     supported.
                   </p>
@@ -516,12 +641,12 @@ export default function ChatAssistant() {
               >
                 <p className="chat-bubble-text">{message.text}</p>
 
-                {message.previewUrl && (
-                  <img
-                    className="chat-inline-preview"
-                    src={message.previewUrl}
-                    alt={message.fileName || "Uploaded image"}
-                  />
+                {message.previewUrl && message.kind === "upload" && (
+                  <details className="chat-source-image">
+                    <summary>View uploaded image</summary>
+                    <img className="chat-inline-preview" src={message.previewUrl}
+                      alt={message.fileName || "Uploaded image"} />
+                  </details>
                 )}
 
                 {message.kind === "result" && message.payload && (
@@ -529,7 +654,7 @@ export default function ChatAssistant() {
                     <div className="chat-result-meta">
                       <span>{message.payload.component || message.analysisId}</span>
                       <span className={`chat-status chat-status--${message.payload.status}`}>
-                        {message.payload.status}
+                        {message.payload.status?.replaceAll("_", " ")}
                       </span>
                     </div>
                     {message.payload.model_version && (
@@ -639,10 +764,38 @@ export default function ChatAssistant() {
         </section>
 
         <aside className="chat-side-panel">
+            <section className="chat-side-card" aria-label="Image-type suggestion">
+              <div className="chat-card-head">
+                <h3>Image-type detection</h3>
+                <span className="eyebrow">Experimental</span>
+              </div>
+              <div className="chat-card-body" aria-live="polite">
+                {routingBusy ? (
+                  <p>Checking image type…</p>
+                ) : routingSuggestion?.sourceFile === file ? (
+                  <>
+                    <p>{routingSuggestion.message}</p>
+                    {typeof routingSuggestion.score === "number" && (
+                      <p className="chat-note">
+                        Image-type model score: {routingSuggestion.score}%.
+                        This is not a guarantee of correctness.
+                      </p>
+                    )}
+                    <p className="chat-note">
+                      You can choose any analysis manually below.
+                      Unsupported-image detection is limited.
+                    </p>
+                  </>
+                ) : (
+                  <p>Upload an image to receive an analysis suggestion.</p>
+                )}
+              </div>
+            </section>
+
           <section className="chat-side-card">
             <div className="chat-card-head">
-              <h3>Choose a lens</h3>
-              <span className="eyebrow">Required</span>
+              <h3>Analysis component</h3>
+              <span className="eyebrow">Manual override</span>
             </div>
             <div className="chat-card-body">
               <div className="chat-analysis-grid">
@@ -651,7 +804,7 @@ export default function ChatAssistant() {
                     key={option.id}
                     type="button"
                     className={`chat-analysis-btn ${selectedAnalysis === option.id ? "is-active" : ""}`}
-                    onClick={() => setSelectedAnalysis(option.id)}
+                    onClick={() => chooseAnalysis(option.id)}
                     disabled={busy}
                   >
                     <b>{option.label}</b>
@@ -661,8 +814,8 @@ export default function ChatAssistant() {
               </div>
               <p className="chat-hint-note">
                 {selectedMeta
-                  ? `${selectedMeta.label} selected. Add an image, then run analysis.`
-                  : "Select a lens to prepare the analysis pipeline. Automatic routing is unavailable."}
+                  ? `${selectedMeta.label} selected${manualSelectionRef.current ? " manually" : " automatically"}. Press Analyse when ready.`
+                  : "Upload an image for a suggestion, or select an analysis manually."}
               </p>
             </div>
           </section>
@@ -711,18 +864,18 @@ export default function ChatAssistant() {
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Upload size={18} aria-hidden="true" />
-                  <span>Drop a frame here or browse files</span>
+                  <span>Browse for a maritime image</span>
                 </button>
               )}
 
               <button
                 type="button"
                 className="chat-btn primary"
-                disabled={!canWrite || busy || !file || !selectedAnalysis}
+                disabled={!canWrite || busy || routingBusy || !file || !selectedAnalysis}
                 onClick={() => runAnalysis()}
               >
                 {busy ? <Loader size={14} className="spin" aria-hidden="true" /> : <Send size={14} aria-hidden="true" />}
-                Analyse image
+                {routingBusy ? "Detecting image type…" : selectedMeta ? `Analyse ${selectedMeta.label}` : "Analyse image"}
               </button>
 
               <div className="chat-metrics" aria-label="Session notes">
@@ -736,7 +889,7 @@ export default function ChatAssistant() {
                 </div>
                 <div className="chat-metric">
                   <small>Routing</small>
-                  <b>Manual</b>
+                  <b>{manualSelectionRef.current ? "Manual" : "Auto"}</b>
                 </div>
               </div>
 

@@ -284,3 +284,38 @@ async def chat_intent(
         message=follow["summary"],
         follow_up_actions=follow.get("follow_up_actions") or DEFAULT_ACTIONS,
     )
+
+
+# OCEANIQ_IMAGE_ROUTER_V1
+@router.post("/route")
+async def chat_route_image(
+    file: UploadFile = File(...),
+    _user=Depends(require_authenticated_request),
+):
+    from .image_router_model import suggest_image_component
+
+    try:
+        contents = await file.read()
+        validation = validate_image_bytes(contents, file.filename)
+
+        if not validation.ok:
+            return {
+                "status": "validation_error",
+                "automatic_routing_available": False,
+                "message": validation.reason,
+            }
+
+        async with _INFERENCE_SEMAPHORE:
+            return await asyncio.to_thread(
+                suggest_image_component,
+                validation.rgb_bytes or contents,
+            )
+    except Exception:
+        traceback.print_exc()
+        return {
+            "status": "unavailable",
+            "automatic_routing_available": False,
+            "message": "Could not suggest an analysis. Please select one manually.",
+        }
+    finally:
+        await file.close()

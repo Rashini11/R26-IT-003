@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -26,6 +27,7 @@ from .schemas import (
     SimulationStartRequest,
 )
 from .state import SimulationState
+from .replay_store import ReplayStore
 
 
 LOGGER = logging.getLogger("maritime-simulation")
@@ -37,6 +39,7 @@ LOGGER = logging.getLogger("maritime-simulation")
 router = APIRouter(tags=["Maritime Simulation"])
 
 STATE = SimulationState()
+REPLAY = ReplayStore()
 AIS_CONTROLLER = AISSimulationController()
 MOTION_PREDICTOR = MotionPredictor()
 
@@ -55,6 +58,16 @@ def configure_simulation_persistence(
 
     SIMULATION_RUNS_COLLECTION = runs_collection
     SIMULATION_EVENTS_COLLECTION = events_collection
+    # Optional read indexes; inability to create them must not stop inference.
+    for collection, keys, name in (
+        (events_collection, [("recording_id", 1), ("frame_number", 1)], "simulation_replay_recording_frame"),
+        (runs_collection, [("recording_id", 1)], "simulation_replay_recording"),
+    ):
+        if collection is not None:
+            try:
+                collection.create_index(keys, name=name)
+            except Exception:
+                LOGGER.warning("Replay index could not be created: %s", name)
 
 
 def _mongo_safe(value):
@@ -116,7 +129,16 @@ def _safe_motion(
 
     try:
         _ensure_motion_predictor_ready()
-        return MOTION_PREDICTOR.predict(history[-10:]), None
+        prediction = dict(MOTION_PREDICTOR.predict(history[-10:]))
+        # Attach display provenance without changing inference inputs or outputs.
+        input_time = history[-1]["timestamp"]
+        if isinstance(input_time, str):
+            input_time = datetime.fromisoformat(input_time.replace("Z", "+00:00"))
+        prediction["input_end_timestamp"] = input_time.isoformat()
+        prediction["forecast_target_timestamp"] = (
+            input_time + timedelta(minutes=prediction["forecast_horizon_minutes"])
+        ).isoformat()
+        return prediction, None
     except Exception as error:
         return None, str(error)
 
@@ -222,6 +244,8 @@ def _run_simulation(
     target_tick_history: list[dict[str, Any]] = []
 
     tick_index = 0
+    cycle_index = 0
+    recording_id = STATE.recording_id
 
     try:
         while not STATE.stop_event.is_set():
@@ -231,6 +255,7 @@ def _run_simulation(
                     break
 
                 tick_index = 0
+                cycle_index += 1
                 own_tick_history.clear()
                 target_tick_history.clear()
 
@@ -332,6 +357,12 @@ def _run_simulation(
 
                 event = {
                     "simulation_id": scenario.scenario_id,
+                    "recording_id": recording_id,
+                    "event_id": f"{recording_id}:{frame_number}",
+                    "cycle_index": cycle_index,
+                    "tick_index": tick_index,
+                    "simulated_interval_seconds": request.simulated_interval_seconds,
+                    "replay_elapsed_seconds": (frame_number - 1) * request.simulated_interval_seconds,
                     "scenario_mode": scenario.mode,
                     "scenario_description": scenario.description,
                     "running": True,
@@ -344,6 +375,7 @@ def _run_simulation(
                     ].isoformat(),
                     "sar": {
                         "filename": image_path.name,
+                        "relative_path": str(image_path.resolve().relative_to(SAR_ROOT.resolve())),
                         "image_url": (
                             "/simulation/current-image"
                             f"?frame={frame_number}"
@@ -384,6 +416,7 @@ def _run_simulation(
 
                 STATE.latest = event
                 STATE.history.append(event)
+                REPLAY.append(recording_id, event)
 
             # -------------------------------------------------
             # SAVE SIMULATION EVENT TO MONGODB
@@ -425,12 +458,13 @@ def _run_simulation(
             final_frame_count = STATE.frame_number
             final_error = STATE.last_error
 
+        REPLAY.finish(recording_id, final_error)
+
         if SIMULATION_RUNS_COLLECTION is not None:
             try:
                 SIMULATION_RUNS_COLLECTION.update_one(
                     {
-                        "simulation_id":
-                            scenario.scenario_id
+                        "recording_id": recording_id
                     },
                     {
                         "$set": {
@@ -786,11 +820,19 @@ def start_simulation(
         ) from error
 
     STATE.reset()
+    recording_id = str(uuid4())
+    REPLAY.begin(recording_id, {
+        "simulation_id": scenario.scenario_id,
+        "scenario_mode": scenario.mode,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "status": "running",
+    })
 
     with STATE.lock:
         STATE.starting = False
         STATE.running = True
         STATE.simulation_id = scenario.scenario_id
+        STATE.recording_id = recording_id
         STATE.mode = scenario.mode
 
         STATE.thread = threading.Thread(
@@ -813,11 +855,11 @@ def start_simulation(
         try:
             SIMULATION_RUNS_COLLECTION.update_one(
                 {
-                    "simulation_id":
-                        scenario.scenario_id
+                    "recording_id": recording_id
                 },
                 {
                     "$set": {
+                        "recording_id": recording_id,
                         "simulation_id":
                             scenario.scenario_id,
                         "scenario_mode":
@@ -859,6 +901,7 @@ def start_simulation(
 
     return {
         "message": "Simulation started",
+        "recording_id": recording_id,
         "simulation_id": scenario.scenario_id,
         "mode": scenario.mode,
         "description": scenario.description,
@@ -905,6 +948,7 @@ def simulation_status():
             "running": STATE.running,
             "starting": STATE.starting,
             "simulation_id": STATE.simulation_id,
+            "recording_id": STATE.recording_id,
             "mode": STATE.mode,
             "frame_number": STATE.frame_number,
             "processed_events": len(
@@ -1015,3 +1059,83 @@ def predict_collision_risk(
         request.own_vessel.model_dump(),
         request.target_vessel.model_dump(),
     )
+
+
+# Replay is read-only: no model calls, scenario regeneration, or risk recalculation.
+@router.get("/simulation/replay/runs")
+def replay_runs():
+    runs = {r["recording_id"]: r for r in REPLAY.list_runs()}
+    database_available = False
+    if SIMULATION_RUNS_COLLECTION is not None:
+        try:
+            docs = (SIMULATION_RUNS_COLLECTION.find(
+                {"recording_id": {"$exists": True}}, {"_id": 0})
+                .sort("started_at", -1).limit(20))
+            for doc in docs:
+                doc = _serialise_mongo_document(doc)
+                runs.setdefault(doc["recording_id"], doc)
+            database_available = True
+        except Exception:
+            LOGGER.warning("Replay run database unavailable")
+    records = sorted(runs.values(), key=lambda r: str(r.get("started_at", "")), reverse=True)
+    return {"records": records[:20], "database_available": database_available,
+            "memory_event_limit": REPLAY.max_events, "memory_run_limit": REPLAY.max_runs}
+
+
+@router.get("/simulation/replay/events")
+def replay_events(
+    recording_id: str = Query(min_length=1, max_length=120),
+    after_frame: int = Query(default=0, ge=0),
+    limit: int = Query(default=500, ge=1, le=500),
+):
+    memory = REPLAY.events(recording_id)
+    candidates = {e["frame_number"]: e for e in memory if e["frame_number"] > after_frame}
+    earliest = memory[0]["frame_number"] if memory else None
+    database_available = False
+    if SIMULATION_EVENTS_COLLECTION is not None:
+        try:
+            query = {"recording_id": recording_id, "frame_number": {"$gt": after_frame}}
+            docs = (SIMULATION_EVENTS_COLLECTION.find(query, {"_id": 0})
+                    .sort("frame_number", 1).limit(limit + 1))
+            for event in docs:
+                candidates.setdefault(event["frame_number"], event)
+            first = SIMULATION_EVENTS_COLLECTION.find_one(
+                {"recording_id": recording_id}, {"_id": 0, "frame_number": 1},
+                sort=[("frame_number", 1)])
+            if first:
+                earliest = min(earliest or first["frame_number"], first["frame_number"])
+            database_available = True
+        except Exception:
+            LOGGER.warning("Replay event database unavailable; using bounded memory")
+    ordered = [candidates[k] for k in sorted(candidates)]
+    results = ordered[:limit]
+    return {"recording_id": recording_id, "results": results,
+            "has_more": len(ordered) > limit,
+            "next_after_frame": results[-1]["frame_number"] if results else after_frame,
+            "earliest_available_frame": earliest,
+            "truncated": earliest is not None and earliest > 1,
+            "database_available": database_available,
+            "storage_notice": "MongoDB records plus bounded in-process cache. Unsaved events do not survive restart."}
+
+
+@router.get("/simulation/replay/image")
+def replay_image(
+    recording_id: str = Query(min_length=1, max_length=120),
+    frame_number: int = Query(ge=1),
+):
+    event = next((e for e in REPLAY.events(recording_id)
+                  if e["frame_number"] == frame_number), None)
+    if event is None and SIMULATION_EVENTS_COLLECTION is not None:
+        try:
+            event = SIMULATION_EVENTS_COLLECTION.find_one(
+                {"recording_id": recording_id, "frame_number": frame_number}, {"_id": 0})
+        except Exception:
+            LOGGER.warning("Replay image database lookup unavailable")
+    relative = (event or {}).get("sar", {}).get("relative_path")
+    if not relative:
+        raise HTTPException(status_code=404, detail="Recorded radar image is unavailable.")
+    root = SAR_ROOT.resolve()
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root) or not path.is_file() or path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".bmp"}:
+        raise HTTPException(status_code=404, detail="Recorded radar asset is unavailable.")
+    return FileResponse(path)
