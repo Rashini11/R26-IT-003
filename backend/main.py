@@ -1,4 +1,4 @@
-import os
+﻿import os
 import json
 import shutil
 import base64
@@ -135,6 +135,12 @@ HULL_MODEL_PATH = os.path.join(
     BASE_DIR,
     "model",
     "hull_model.keras",
+)
+
+HULL_VALIDATOR_MODEL_PATH = os.path.join(
+    BASE_DIR,
+    "model",
+    "hull_validator_hardneg.keras",
 )
 
 SEA_MODEL_PATH = os.path.join(
@@ -344,7 +350,6 @@ hull_classes = [
     "biofouling",
     "corrosion",
     "cracks",
-    "non_hull",
     "paint_damage",
     
 ]
@@ -354,15 +359,73 @@ hull_classes = [
 # =====================================================
 
 HULL_CONFIDENCE_THRESHOLD = 0.70
-NON_HULL_THRESHOLD = 0.50
+
 
 recommendations = {
     "biofouling": "Clean hull using high-pressure water or antifouling treatment.",
     "corrosion": "Apply anti-corrosion coating or replace damaged metal.",
-    "cracks": "Critical damage. Perform welding repair immediately.",
+    "cracks": "Arrange urgent professional inspection to assess the crack and determine the appropriate repair.",
     "paint_damage": "Inspect the affected area and repair or reapply marine-grade protective coating.",
-    "non_hull": "The uploaded image does not appear to show a ship hull. Please upload a clear underwater hull image."
 }
+
+
+# =====================================================
+# RULE-BASED PRELIMINARY SEVERITY ASSESSMENT
+# =====================================================
+
+SEVERITY_RULES = {
+    "biofouling": {
+        "level": "Low",
+        "reason": "Biofouling detected; its extent is not measured.",
+        "action": "Plan hull cleaning and inspect the affected area.",
+    },
+    "corrosion": {
+        "level": "High",
+        "reason": "Corrosion may compromise protective coatings or metal.",
+        "action": "Arrange a qualified inspection and assess metal loss.",
+    },
+    "cracks": {
+        "level": "Critical",
+        "reason": "A possible crack may indicate structural damage.",
+        "action": "Arrange urgent professional inspection before deciding on repairs.",
+    },
+    "paint_damage": {
+        "level": "Moderate",
+        "reason": "Paint or protective coating damage is indicated.",
+        "action": "Inspect the affected area and plan coating repair.",
+    },
+}
+
+
+
+def assess_defect_severity(defect):
+    """
+    Preliminary rule-based priority by defect category.
+    This does not measure actual damage extent.
+    """
+    rule = SEVERITY_RULES.get(defect)
+
+    if rule is None:
+        return {
+            "level": "Undetermined",
+            "method": "Rule-based preliminary assessment",
+            "reason": "No severity rule is available for this defect.",
+            "recommended_action": "Request a manual inspection.",
+            "notice": (
+                "Confirm the findings through professional inspection."
+            ),
+        }
+
+    return {
+        "level": rule["level"],
+        "method": "Rule-based preliminary assessment",
+        "reason": rule["reason"],
+        "recommended_action": rule["action"],
+        "notice": (
+            "Priority is based on defect category, not measured "
+            "damage extent. Confirm through professional inspection."
+        ),
+    }
 
 try:
     if os.path.exists(HULL_MODEL_PATH):
@@ -413,6 +476,46 @@ except Exception as e:
     hull_model = None
 
 
+# =====================================================
+# HULL / NON-HULL VALIDATOR MODEL
+# =====================================================
+
+hull_validator_model = None
+
+try:
+    if os.path.exists(HULL_VALIDATOR_MODEL_PATH):
+
+        print(
+            "Loading hull validator from:",
+            HULL_VALIDATOR_MODEL_PATH,
+        )
+
+        hull_validator_model = tf.keras.models.load_model(
+            HULL_VALIDATOR_MODEL_PATH,
+            compile=False,
+        )
+
+        print(
+            "Hull validator loaded successfully"
+        )
+
+    else:
+
+        print(
+            "WARNING: Hull validator model not found:",
+            HULL_VALIDATOR_MODEL_PATH,
+        )
+
+except Exception as e:
+
+    print(
+        "ERROR loading hull validator:",
+        e,
+    )
+
+    hull_validator_model = None
+
+
 def validate_hull_image(image):
     """
     Basic image-quality validation before hull classification.
@@ -457,6 +560,117 @@ def validate_hull_image(image):
         "height": height,
     }
 
+
+# =====================================================
+# HULL / NON-HULL CLASSIFICATION
+# =====================================================
+
+HULL_VALIDATOR_THRESHOLD = 0.70
+
+
+def classify_hull_or_non_hull(image):
+
+    if hull_validator_model is None:
+
+        return {
+            "is_hull": False,
+            "hull_confidence": 0,
+            "non_hull_confidence": 0,
+            "message": "Hull validator model is not available.",
+        }
+
+    resized = cv2.resize(
+        image,
+        (224, 224),
+    )
+
+    resized = cv2.cvtColor(
+        resized,
+        cv2.COLOR_BGR2RGB,
+    )
+
+    image_array = np.expand_dims(
+        resized.astype(np.float32),
+        axis=0,
+    )
+
+    # IMPORTANT:
+    # The validator model already contains
+    # MobileNetV2 preprocessing in its input pipeline.
+    prediction = hull_validator_model.predict(
+        image_array,
+        verbose=0,
+    )[0][0]
+
+    non_hull_probability = float(prediction)
+
+    hull_probability = 1.0 - non_hull_probability
+
+    print("\n========== HULL VALIDATOR ==========")
+    print(
+        f"Hull: {hull_probability * 100:.2f}%"
+    )
+    print(
+        f"Non-Hull: {non_hull_probability * 100:.2f}%"
+    )
+    print("====================================\n")
+
+    # =====================================================
+    # HULL / NON-HULL DECISION
+    # =====================================================
+
+    if hull_probability >= HULL_VALIDATOR_THRESHOLD:
+
+        return {
+            "is_hull": True,
+            "hull_confidence": round(
+                hull_probability * 100,
+                2,
+            ),
+            "non_hull_confidence": round(
+                non_hull_probability * 100,
+                2,
+            ),
+            "message": (
+                "Underwater hull image accepted."
+            ),
+        }
+
+    elif non_hull_probability >= HULL_VALIDATOR_THRESHOLD:
+
+        return {
+            "is_hull": False,
+            "hull_confidence": round(
+                hull_probability * 100,
+                2,
+            ),
+            "non_hull_confidence": round(
+                non_hull_probability * 100,
+                2,
+            ),
+            "message": (
+                "The uploaded image does not appear "
+                "to show an underwater ship hull."
+            ),
+        }
+
+    else:
+
+        return {
+            "is_hull": False,
+            "hull_confidence": round(
+                hull_probability * 100,
+                2,
+            ),
+            "non_hull_confidence": round(
+                non_hull_probability * 100,
+                2,
+            ),
+            "message": (
+                "The system could not reliably determine "
+                "whether the image shows an underwater ship hull."
+            ),
+        }
 
 def make_gradcam_heatmap(
     img_array,
@@ -640,8 +854,50 @@ def run_hull_defect_analysis(
                 "recommendation": None,
                 "warning": validation["reason"],
                 "validation": validation,
+                "hull_validation": None,
                 "gradcam": None,
             }
+
+
+        # =====================================================
+        # HULL / NON-HULL VALIDATION
+        # =====================================================
+
+        hull_validation = classify_hull_or_non_hull(
+            original_img
+        )
+
+        print(
+            "Hull validation result:",
+            hull_validation
+        )
+
+
+        # =====================================================
+        # REJECT NON-HULL IMAGE
+        # =====================================================
+
+        if not hull_validation["is_hull"]:
+
+            return {
+                "prediction": None,
+                "confidence": 0,
+                "valid_hull_image": False,
+                "detected_defects": [],
+                "multiple_defects": False,
+                "recommendation": (
+                    "Please upload a clear underwater "
+                    "ship-hull inspection image."
+                ),
+                "warning": (
+                    "Non-hull image detected. "
+                    "Defect classification was not performed."
+                ),
+                "validation": validation,
+                "hull_validation": hull_validation,
+                "gradcam": None,
+            }
+
 
         # =====================================================
         # PREPROCESS IMAGE FOR HULL DEFECT MODEL
@@ -674,6 +930,23 @@ def run_hull_defect_analysis(
         # Get probabilities for every defect class
         probabilities = preds[0]
 
+        if len(probabilities) != len(hull_classes):
+            return {
+                "prediction": None,
+                "confidence": 0,
+                "valid_hull_image": False,
+                "detected_defects": [],
+                "multiple_defects": False,
+                "recommendation": None,
+                "warning": (
+                    f"Model output mismatch: "
+                    f"model returned {len(probabilities)} outputs, "
+                    f"but backend expects {len(hull_classes)} classes."
+                ),
+                "validation": validation,
+                "gradcam": None,
+            }
+
         print("\n========== HULL PREDICTION DEBUG ==========")
 
         for i, prob in enumerate(probabilities):
@@ -683,10 +956,7 @@ def run_hull_defect_analysis(
 
         print("===========================================\n")
 
-        non_hull_idx = hull_classes.index("non_hull")
-        non_hull_confidence = float(
-        probabilities[non_hull_idx]
-)
+        
 
         # =====================================================
         # PRIMARY PREDICTION
@@ -698,30 +968,6 @@ def run_hull_defect_analysis(
         confidence = float(probabilities[class_idx])
 
        
-
-        # =====================================================
-        # NON-HULL DETECTION
-        # =====================================================
-
-        if non_hull_confidence >= NON_HULL_THRESHOLD:
-
-            return {
-                "prediction": "non_hull",
-                "confidence": round(confidence * 100, 2),
-                "valid_hull_image": False,
-                "detected_defects": [],
-                "multiple_defects": False,
-                "recommendation": (
-                    "The uploaded image does not appear to show "
-                    "a ship hull. Please upload a clear underwater "
-                    "hull image."
-                ),
-                "warning": (
-                    "This image was classified as non-hull."
-                ),
-                "validation": validation,
-                "gradcam": None,
-            }
 
         # =====================================================
         # CONFIDENCE VALIDATION
@@ -755,9 +1001,6 @@ def run_hull_defect_analysis(
         detected_defects = []
 
         for i, prob in enumerate(probabilities):
-
-            if hull_classes[i] == "non_hull":
-                continue
 
             detected_defects.append({
                 "defect": hull_classes[i],
@@ -802,76 +1045,93 @@ def run_hull_defect_analysis(
         # RECOMMENDATION
         # =====================================================
 
-        if multiple_defects:
+        
 
+        warning = None
+
+        severity = assess_defect_severity(prediction)
+
+        if multiple_defects:
             recommendation = (
                 "Multiple possible defects detected: "
                 + ", ".join(
-                    item["defect"]
-                    for item in reported_defects
+                    item["defect"] for item in reported_defects
                 )
-                + ". Inspect the affected area carefully "
-                "and perform appropriate repair for each defect."
+                + ". Arrange a professional hull inspection and "
+                "prioritize repairs based on the confirmed findings."
             )
-
         else:
-
-            recommendation = recommendations[prediction]
-
-        LAST_CONV_LAYER = "Conv_1"
-
-        heatmap = (
-            make_gradcam_heatmap(
-                img_array,
-                hull_model,
-                LAST_CONV_LAYER,
+            recommendation = (
+                recommendations[prediction]
+                + " Preliminary priority: "
+                + severity["level"]
+                + ". "
+                + severity["recommended_action"]
             )
-        )
 
-        heatmap = cv2.resize(
-            heatmap,
-            (
-                original_img.shape[1],
-                original_img.shape[0],
-            ),
-        )
+                # =====================================================
+        # GENERATE GRAD-CAM EXPLANATION
+        # =====================================================
+        gradcam_base64 = None
 
-        heatmap = np.uint8(
-            255 * heatmap
-        )
+        try:
+            heatmap = make_gradcam_heatmap(
+                img_array=img_array,
+                model=hull_model,
+                last_conv_layer_name="out_relu",
+                pred_index=int(np.argmax(probabilities)),
+            )
 
-        heatmap = cv2.applyColorMap(
-            heatmap,
-            cv2.COLORMAP_JET,
-        )
-
-        superimposed_img = (
-            cv2.addWeighted(
-                original_img,
-                0.6,
+            # Resize heatmap to match the input image
+            heatmap_resized = cv2.resize(
                 heatmap,
+                (224, 224),
+            )
+
+            heatmap_uint8 = np.uint8(
+                255 * heatmap_resized
+            )
+
+            # Create colored heatmap
+            heatmap_color = cv2.applyColorMap(
+                heatmap_uint8,
+                cv2.COLORMAP_JET,
+            )
+
+            # Convert original RGB image to BGR
+            original_bgr = cv2.cvtColor(
+                img_resized,
+                cv2.COLOR_RGB2BGR,
+            )
+
+            # Overlay heatmap on original image
+            overlay = cv2.addWeighted(
+                original_bgr,
+                0.6,
+                heatmap_color,
                 0.4,
                 0,
             )
-        )
 
-        _, buffer = cv2.imencode(
-            ".jpg",
-            superimposed_img,
-        )
+            # Encode overlay as Base64 PNG
+            success, encoded_image = cv2.imencode(
+                ".png",
+                overlay,
+            )
 
-        gradcam_base64 = (
-            base64.b64encode(
-                buffer
-            ).decode("utf-8")
-        )
+            if success:
+                gradcam_base64 = (
+                    "data:image/png;base64,"
+                    + base64.b64encode(
+                        encoded_image.tobytes()
+                    ).decode("utf-8")
+                )
 
-        warning = (
-            "Low confidence. Manual "
-            "inspection recommended."
-            if confidence < HULL_CONFIDENCE_THRESHOLD
-            else "Prediction reliable."
-        )
+        except Exception as gradcam_error:
+            print(
+                "Grad-CAM generation failed:",
+                gradcam_error,
+            )
 
         # =====================================================
         # SAVE HULL PREDICTION TO MONGODB
@@ -884,8 +1144,9 @@ def run_hull_defect_analysis(
         "prediction": prediction,
         "confidence": confidence,
         "detected_defects": reported_defects,
-        "multiple_defects": multiple_defects,
+        "multiple_defects": multiple_defects,        
         "recommendation": recommendation,
+        "severity": severity,
         "warning": warning,
         "source": source,
     }
@@ -897,9 +1158,12 @@ def run_hull_defect_analysis(
             "prediction": prediction,
             "confidence": round(confidence * 100, 2),
             "valid_hull_image": True,
+            "hull_validation": hull_validation,
+            "validation": validation,
             "detected_defects": detected_defects,
             "multiple_defects": multiple_defects,
             "recommendation": recommendation,
+            "severity": severity,
             "warning": warning,
             "gradcam": gradcam_base64,
         }
@@ -1580,7 +1844,7 @@ def clear_hull_prediction_history():
         except Exception as e:
             print(
                 "Error clearing hull prediction history from MongoDB:",
-                e
+                
             )
 
     local_history = _load_local_hull_history()
@@ -2628,7 +2892,7 @@ async def get_boat_detection_video(filename: str):
 
 
 # =====================================================
-# RADAR OBJECT CLASSIFICATION MODEL — V4 RAW
+# RADAR OBJECT CLASSIFICATION MODEL â€” V4 RAW
 # MobileNetV3-Small
 #
 # Input:
@@ -3235,6 +3499,9 @@ def health():
             "hull_model_loaded": (
                 hull_model is not None
             ),
+            "hull_validator_loaded": (
+                hull_validator_model is not None
+            ),
             "sea_model_loaded": (
                 sea_model is not None
             ),
@@ -3343,3 +3610,4 @@ if FRONTEND_DIST.exists():
         return FileResponse(
             str(FRONTEND_DIST / "index.html")
         )
+

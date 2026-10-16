@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import traceback
@@ -319,3 +319,4 @@ async def chat_route_image(
         }
     finally:
         await file.close()
+

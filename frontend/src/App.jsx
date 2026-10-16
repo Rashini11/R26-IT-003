@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ╔══════════════════════════════════════════════════════════╗
  * ║  OceanIQ — Marine AI Intelligence Platform               ║
  * ║  Research Project R26-IT-003                             ║
@@ -765,7 +765,425 @@ useEffect(() => {
   };
 
   /* ── Sea-state PDF report from the Sea-State branch ── */
-const generateSeaStatePDF = () => {
+const generateHullPDF = async () => {
+  if (!result || activeModule !== "hull" || result.__error) {
+    alert("Please complete a hull inspection before generating the report.");
+    return;
+  }
+
+  try {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+    const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
+    const M = 15;
+    const CW = W - M * 2;
+
+    const C = {
+      navy: [15, 35, 60],
+      teal: [0, 150, 145],
+      ink: [35, 48, 65],
+      muted: [105, 119, 135],
+      pale: [241, 246, 249],
+      line: [218, 227, 233],
+      white: [255, 255, 255],
+      green: [35, 139, 100],
+      amber: [219, 150, 35],
+      orange: [221, 105, 45],
+      red: [195, 59, 65]
+    };
+
+    let y = 0;
+    const generatedAt = new Date();
+    const reportId = "OIQ-HULL-" + generatedAt.getTime().toString().slice(-8);
+    const defectName = String(result.prediction || "Unknown")
+      .replace(/[_-]/g, " ")
+      .replace(/\b\w/g, (ch) => ch.toUpperCase());
+
+    const severity = result.severity || {};
+    const severityText = String(severity.level || "Not assessed");
+    const severityLower = severityText.toLowerCase();
+
+    const severityColor =
+      severityLower.includes("critical") ? C.red :
+      severityLower.includes("high") ? C.orange :
+      severityLower.includes("moderate") || severityLower.includes("medium") ? C.amber :
+      severityLower.includes("low") || severityLower.includes("minor") ? C.green :
+      C.muted;
+
+    const confidenceValue = Number(result.confidence);
+    const confidencePct = Number.isFinite(confidenceValue)
+      ? Math.max(0, Math.min(100, confidenceValue <= 1 ? confidenceValue * 100 : confidenceValue))
+      : null;
+
+    const addText = (text, x, top, width, fontSize = 9, color = C.ink, style = "normal") => {
+      doc.setFont("helvetica", style);
+      doc.setFontSize(fontSize);
+      doc.setTextColor(...color);
+      const lines = doc.splitTextToSize(String(text ?? ""), width);
+      doc.text(lines, x, top);
+      return lines.length * fontSize * 0.42 + 1.5;
+    };
+
+    const sectionTitle = (title, top) => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(...C.navy);
+      doc.text(title.toUpperCase(), M, top);
+      doc.setDrawColor(...C.teal);
+      doc.setLineWidth(0.8);
+      doc.line(M, top + 2.5, M + 16, top + 2.5);
+      return top + 8;
+    };
+
+    const ensureSpace = (needed) => {
+      if (y + needed > H - 18) {
+        doc.addPage();
+        y = 18;
+      }
+    };
+
+    const imageToDataURL = (url) => new Promise((resolve) => {
+      if (!url) {
+        resolve(null);
+        return;
+      }
+
+      const image = new Image();
+      image.crossOrigin = "anonymous";
+
+      image.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = image.naturalWidth || image.width;
+          canvas.height = image.naturalHeight || image.height;
+          const context = canvas.getContext("2d");
+
+          if (!context) {
+            resolve(null);
+            return;
+          }
+
+          context.drawImage(image, 0, 0);
+          resolve(canvas.toDataURL("image/jpeg", 0.88));
+        } catch {
+          resolve(null);
+        }
+      };
+
+      image.onerror = () => resolve(null);
+      image.src = url;
+    });
+
+    const addImagePanel = async (title, url, x, top, width, height) => {
+      doc.setFillColor(...C.pale);
+      doc.setDrawColor(...C.line);
+      doc.roundedRect(x, top, width, height, 2, 2, "FD");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(...C.navy);
+      doc.text(title.toUpperCase(), x + 3, top + 6);
+
+      const data = await imageToDataURL(url);
+
+      if (data) {
+        try {
+          const props = doc.getImageProperties(data);
+          const maxW = width - 6;
+          const maxH = height - 12;
+          const scale = Math.min(maxW / props.width, maxH / props.height);
+          const imgW = props.width * scale;
+          const imgH = props.height * scale;
+          doc.addImage(
+            data,
+            "JPEG",
+            x + (width - imgW) / 2,
+            top + 9 + (maxH - imgH) / 2,
+            imgW,
+            imgH
+          );
+        } catch {
+          addText("Image could not be embedded.", x + 3, top + 18, width - 6, 7, C.muted);
+        }
+      } else {
+        addText("Image unavailable.", x + 3, top + 18, width - 6, 7, C.muted);
+      }
+    };
+
+    const addFooter = () => {
+      const pages = doc.getNumberOfPages();
+
+      for (let page = 1; page <= pages; page += 1) {
+        doc.setPage(page);
+        doc.setDrawColor(...C.line);
+        doc.setLineWidth(0.3);
+        doc.line(M, H - 12, W - M, H - 12);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(...C.muted);
+        doc.text("OCEANIQ  |  UNDERWATER HULL CONDITION ASSESSMENT", M, H - 7);
+        doc.text("Report " + reportId, W - M, H - 7, { align: "right" });
+        doc.text("Page " + page + " of " + pages, W - M, H - 3, { align: "right" });
+      }
+    };
+
+    // REPORT HEADER
+    doc.setFillColor(...C.navy);
+    doc.rect(0, 0, W, 39, "F");
+    doc.setFillColor(...C.teal);
+    doc.rect(0, 39, W, 2, "F");
+
+    doc.setTextColor(...C.white);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(19);
+    doc.text("OCEANIQ", M, 14);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text("UNDERWATER HULL INSPECTION REPORT", M, 22);
+
+    doc.setFontSize(7.5);
+    doc.setTextColor(195, 215, 226);
+    doc.text("AI-ASSISTED CONDITION ASSESSMENT", M, 29);
+    doc.text("REPORT ID  " + reportId, W - M, 14, { align: "right" });
+    doc.text(
+      generatedAt.toLocaleString(),
+      W - M,
+      22,
+      { align: "right" }
+    );
+
+    y = 51;
+
+    // INSPECTION SUMMARY
+    y = sectionTitle("01  |  Inspection summary", y);
+
+    doc.setFillColor(...C.pale);
+    doc.setDrawColor(...C.line);
+    doc.roundedRect(M, y, CW, 34, 3, 3, "FD");
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...C.muted);
+    doc.text("DETECTED CONDITION", M + 5, y + 7);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(...C.navy);
+    doc.text(doc.splitTextToSize(defectName, CW * 0.53), M + 5, y + 15);
+
+    const dividerX = M + CW * 0.61;
+    doc.setDrawColor(...C.line);
+    doc.line(dividerX, y + 5, dividerX, y + 29);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...C.muted);
+    doc.text("MODEL CONFIDENCE", dividerX + 5, y + 7);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(...C.teal);
+    doc.text(confidencePct === null ? "N/A" : confidencePct.toFixed(1) + "%", dividerX + 5, y + 16);
+
+    doc.setFillColor(...C.line);
+    doc.roundedRect(dividerX + 5, y + 21, CW * 0.29, 3, 1, 1, "F");
+
+    if (confidencePct !== null) {
+      doc.setFillColor(...C.teal);
+      doc.roundedRect(
+        dividerX + 5,
+        y + 21,
+        Math.max(0.5, CW * 0.29 * confidencePct / 100),
+        3,
+        1,
+        1,
+        "F"
+      );
+    }
+
+    y += 40;
+
+    // SEVERITY AND RECOMMENDATION
+    ensureSpace(35);
+    y = sectionTitle("02  |  Severity and maintenance guidance", y);
+
+    doc.setFillColor(...severityColor);
+    doc.roundedRect(M, y, 32, 10, 2, 2, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...C.white);
+    doc.text(severityText.toUpperCase().slice(0, 18), M + 16, y + 6.5, { align: "center" });
+
+    let detailsY = y + 5;
+    if (severity.method) {
+      detailsY += addText("Assessment method: " + severity.method, M + 37, detailsY, CW - 37, 8, C.muted);
+    }
+    if (severity.reason) {
+      detailsY += addText("Reason: " + severity.reason, M + 37, detailsY, CW - 37, 8, C.ink);
+    }
+
+    y = Math.max(y + 15, detailsY + 2);
+
+    const recommendation = severity.recommended_action || result.recommendation || "Arrange a qualified inspection and confirm the appropriate maintenance action.";
+    const recommendationHeight = Math.max(22, doc.splitTextToSize(String(recommendation), CW - 12).length * 4.2 + 12);
+
+    ensureSpace(recommendationHeight + 8);
+    doc.setFillColor(235, 248, 246);
+    doc.setDrawColor(190, 226, 220);
+    doc.roundedRect(M, y, CW, recommendationHeight, 2, 2, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...C.teal);
+    doc.text("RECOMMENDED ACTION", M + 5, y + 7);
+
+    addText(recommendation, M + 5, y + 13, CW - 10, 8, C.ink);
+    y += recommendationHeight + 5;
+
+    if (result.warning || severity.notice) {
+      const warning = result.warning || severity.notice;
+      const warningHeight = Math.max(14, doc.splitTextToSize(String(warning), CW - 12).length * 4 + 8);
+      ensureSpace(warningHeight + 4);
+
+      doc.setFillColor(255, 247, 232);
+      doc.setDrawColor(241, 218, 174);
+      doc.roundedRect(M, y, CW, warningHeight, 2, 2, "FD");
+      addText("NOTE: " + warning, M + 5, y + 7, CW - 10, 7.5, [125, 83, 25]);
+      y += warningHeight + 5;
+    }
+
+    // CLASS PROBABILITIES
+    const probabilities = result.probabilities && typeof result.probabilities === "object"
+      ? Object.entries(result.probabilities)
+      : [];
+
+    if (probabilities.length) {
+      ensureSpace(18 + probabilities.length * 9);
+      y = sectionTitle("03  |  Class probability distribution", y);
+
+      probabilities.sort((a, b) => Number(b[1]) - Number(a[1]));
+
+      const labelW = 43;
+      const valueW = 17;
+      const barX = M + labelW;
+      const barW = CW - labelW - valueW - 3;
+
+      for (const [label, rawValue] of probabilities) {
+        const raw = Number(rawValue);
+        const pct = Number.isFinite(raw)
+          ? Math.max(0, Math.min(100, raw <= 1 ? raw * 100 : raw))
+          : 0;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C.ink);
+        doc.text(
+          String(label).replace(/[_-]/g, " ").slice(0, 22),
+          M,
+          y + 3
+        );
+
+        doc.setFillColor(...C.pale);
+        doc.roundedRect(barX, y, barW, 4, 1, 1, "F");
+
+        if (pct > 0) {
+          doc.setFillColor(...(String(label).toLowerCase() === String(result.prediction).toLowerCase() ? C.teal : [133, 165, 180]));
+          doc.roundedRect(barX, y, Math.max(0.5, barW * pct / 100), 4, 1, 1, "F");
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C.navy);
+        doc.text(pct.toFixed(1) + "%", W - M, y + 3, { align: "right" });
+
+        y += 8;
+      }
+
+      y += 3;
+    }
+
+    // IMAGE EVIDENCE
+    ensureSpace(63);
+    y = sectionTitle("04  |  Visual evidence", y);
+
+    const gap = 5;
+    const panelW = (CW - gap) / 2;
+    const panelH = 49;
+
+    await addImagePanel("Uploaded inspection image", preview, M, y, panelW, panelH);
+    await addImagePanel(
+      "Grad-CAM model attention",
+      result.gradcam || null,
+      M + panelW + gap,
+      y,
+      panelW,
+      panelH
+    );
+
+    y += panelH + 5;
+
+    if (result.gradcam) {
+      ensureSpace(16);
+      addText(
+        "Grad-CAM visualisation indicates image regions that influenced the model prediction. It is an explanatory aid, not a verified defect boundary.",
+        M,
+        y,
+        CW,
+        7.5,
+        C.muted
+      );
+      y += 11;
+    }
+
+    // INSPECTION NOTES
+    ensureSpace(45);
+    y = sectionTitle("05  |  Inspector notes", y);
+
+    doc.setDrawColor(...C.line);
+    doc.setFillColor(...C.white);
+    doc.roundedRect(M, y, CW, 29, 2, 2, "FD");
+
+    for (let i = 1; i <= 3; i += 1) {
+      doc.setDrawColor(...C.line);
+      doc.line(M + 5, y + i * 7, W - M - 5, y + i * 7);
+    }
+
+    y += 35;
+
+    const fieldW = (CW - 10) / 2;
+    addText("Inspector: ______________________________", M, y, fieldW, 7.5, C.muted);
+    addText("Inspection date: __________________", M + fieldW + 10, y, fieldW, 7.5, C.muted);
+    y += 9;
+    addText("Signature: ______________________________________________", M, y, CW, 7.5, C.muted);
+
+    // LIMITATIONS
+    y += 12;
+    ensureSpace(24);
+    doc.setFillColor(...C.pale);
+    doc.roundedRect(M, y, CW, 19, 2, 2, "F");
+    addText(
+      "IMPORTANT LIMITATION: This report contains AI-generated predictions and should support, not replace, assessment by a qualified marine inspector. Confirm the defect, severity, and maintenance decision through appropriate inspection.",
+      M + 4,
+      y + 6,
+      CW - 8,
+      7,
+      C.muted
+    );
+
+    addFooter();
+    doc.save("OceanIQ_Hull_Report_" + defectName.replace(/[^a-z0-9]+/gi, "_") + ".pdf");
+  } catch (error) {
+    console.error("Hull PDF generation failed:", error);
+    alert("Unable to generate the Hull PDF report. Please check the browser console.");
+  }
+};
+
+/* Sea-state PDF report from the Sea-State branch */
+  const generateSeaStatePDF = () => {
   if (!result || activeModule !== "sea" || result.__error) return;
 
   const doc = new jsPDF();
@@ -1916,7 +2334,62 @@ const generateSeaStatePDF = () => {
                 })}
               </div>
             )}
+            {/* HULL ASSESSMENT DETAILS */}
+            {activeModule === "hull" && (
+              <div style={{ marginTop: 18, display: "grid", gap: 14 }}>
 
+                {/* Hull Validation */}
+                <div className="a-card" style={{ padding: 16 }}>
+                  <p className="a-card-label">HULL VALIDATION</p>
+                  <p>
+                    {result.hull_validation
+                      ? (result.hull_validation.is_hull === true
+                          ? "Hull surface validated"
+                          : result.hull_validation.is_hull === false
+                            ? "Hull surface not validated"
+                            : "Validation status unavailable")
+                      : "Validation status unavailable"}
+                  </p>
+                </div>
+
+                {/* Severity */}
+                <div className="a-card" style={{ padding: 16 }}>
+                  <p className="a-card-label">SEVERITY ASSESSMENT</p>
+                  <h3 style={{ color: "#67d9f5", marginTop: 8 }}>
+                    {result.severity?.level || "Not assessed"}
+                  </h3>
+                  <p>{result.severity?.reason || "Preliminary assessment based on the detected hull condition."}</p>
+                </div>
+
+                {/* Maintenance Priority */}
+                <div className="a-card" style={{ padding: 16 }}>
+                  <p className="a-card-label">MAINTENANCE GUIDANCE</p>
+                  <p>
+                    {result.severity?.recommended_action ||
+                      result.recommendation ||
+                      "Qualified inspection recommended."}
+                  </p>
+                </div>
+
+                {/* System Warnings */}
+                <div
+                  className="a-card"
+                  style={{
+                    padding: 16,
+                    border: "1px solid #95682e"
+                  }}
+                >
+                  <p style={{ color: "#ffc078", fontWeight: 700 }}>
+                    SYSTEM WARNINGS
+                  </p>
+                  <p>
+                    {result.warning ||
+                      result.severity?.notice ||
+                      "AI-generated findings are preliminary. Confirm the defect and maintenance decision through qualified inspection."}
+                  </p>
+                </div>
+              </div>
+            )}
             {/* GRAD-CAM */}
             {result.gradcam && (
               <div className="gradcam-block">
@@ -1946,7 +2419,7 @@ const generateSeaStatePDF = () => {
                     </p>
 
                     <img
-                      src={`data:image/jpeg;base64,${result.gradcam}`}
+                      src={result.gradcam}
                       alt="Grad-CAM"
                     />
 
@@ -2781,6 +3254,18 @@ const generateSeaStatePDF = () => {
 
             {/* Actual prediction results */}
             {renderResults()}
+
+            {/* Hull PDF Download */}
+            {activeModule === "hull" && result && !result.__error && (
+              <button
+                type="button"
+                className="module-report-btn"
+                onClick={generateHullPDF}
+                style={{ marginTop: "16px", width: "100%" }}
+              >
+                DOWNLOAD HULL PDF REPORT
+              </button>
+            )}
           </section>
         </div>
         {activeModule === "boat" && (
@@ -2854,3 +3339,4 @@ function App() {
 }
 
 export default App;
+
