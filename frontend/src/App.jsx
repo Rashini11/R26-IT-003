@@ -69,6 +69,7 @@ import "./App.css";
    BACKEND CONFIGURATION — do not modify endpoint names
    ══════════════════════════════════════════════════════════ */
 const API_BASE_URL = "http://localhost:8000";
+const VESSEL_HISTORY_PAGE_SIZE = 10;
 
 /* ══════════════════════════════════════════════════════════
    MODULE DEFINITIONS
@@ -476,6 +477,7 @@ function AppContent() {
   const [seaHistory, setSeaHistory] = useState([]);
   const [seaHistoryLoading, setSeaHistoryLoading] = useState(false);
   const [vesselHistory, setVesselHistory] = useState([]);
+  const [vesselHistoryPage, setVesselHistoryPage] = useState(1);
   const [vesselHistoryLoading, setVesselHistoryLoading] = useState(false);
   const [vesselHistoryError, setVesselHistoryError] = useState("");
   const [vesselHistoryStorage, setVesselHistoryStorage] = useState("unknown");
@@ -570,7 +572,12 @@ useEffect(() => {
       setVesselHistoryLoading(true);
       setVesselHistoryError("");
       const { data } = await axios.get(`${API_BASE_URL}/vessel-detection-history`);
-      setVesselHistory(data.history || []);
+      const history = data.history || [];
+      setVesselHistory(history);
+      setVesselHistoryPage((page) => Math.min(
+        page,
+        Math.max(1, Math.ceil(history.length / VESSEL_HISTORY_PAGE_SIZE)),
+      ));
       setVesselHistoryStorage(data.storage || "unknown");
     } catch (error) {
       console.error("Failed to load vessel detection history:", error);
@@ -975,6 +982,11 @@ useEffect(() => {
       );
       if (data?.error) throw new Error(data.error);
       setVesselHistory((current) => current.filter((item) => item.record_id !== recordId));
+      const remainingRecords = vesselHistory.length - 1;
+      setVesselHistoryPage((page) => Math.min(
+        page,
+        Math.max(1, Math.ceil(remainingRecords / VESSEL_HISTORY_PAGE_SIZE)),
+      ));
       if (vesselRecordId === recordId) setVesselRecordId(null);
     } catch (error) {
       console.error("Failed to delete vessel history record:", error);
@@ -2758,6 +2770,17 @@ const generateSeaStatePDF = () => {
      FULL APPLICATION RENDER
      Layout: sidebar (fixed left) + main content (scrollable)
      ════════════════════════════════════════════════════════ */
+  const vesselHistoryPageCount = Math.max(
+    1,
+    Math.ceil(vesselHistory.length / VESSEL_HISTORY_PAGE_SIZE),
+  );
+  const currentVesselHistoryPage = Math.min(vesselHistoryPage, vesselHistoryPageCount);
+  const vesselHistoryStartIndex = (currentVesselHistoryPage - 1) * VESSEL_HISTORY_PAGE_SIZE;
+  const currentVesselHistoryRecords = vesselHistory.slice(
+    vesselHistoryStartIndex,
+    vesselHistoryStartIndex + VESSEL_HISTORY_PAGE_SIZE,
+  );
+
   return (
     <div className="app-shell">
 
@@ -3286,8 +3309,8 @@ const generateSeaStatePDF = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {vesselHistory.map((item, index) => (
-                      <Fragment key={`${item.timestamp}-${item.record_id || index}`}>
+                    {currentVesselHistoryRecords.map((item, index) => (
+                      <Fragment key={`${item.timestamp}-${item.record_id || vesselHistoryStartIndex + index}`}>
                         <tr>
                           <td>
                             <strong className="vessel-table-primary">
@@ -3393,6 +3416,32 @@ const generateSeaStatePDF = () => {
                   </tbody>
                   </table>
                 </div>
+                {vesselHistoryPageCount > 1 && (
+                  <nav className="vessel-history-pagination" aria-label="Vessel history pages">
+                    <span>
+                      Showing {vesselHistoryStartIndex + 1}–
+                      {Math.min(vesselHistoryStartIndex + VESSEL_HISTORY_PAGE_SIZE, vesselHistory.length)}
+                      {" "}of {vesselHistory.length}
+                    </span>
+                    <div className="vessel-history-pagination-controls">
+                      <button
+                        type="button"
+                        onClick={() => setVesselHistoryPage((page) => Math.max(1, page - 1))}
+                        disabled={currentVesselHistoryPage === 1}
+                      >
+                        PREVIOUS
+                      </button>
+                      <span>PAGE {currentVesselHistoryPage} OF {vesselHistoryPageCount}</span>
+                      <button
+                        type="button"
+                        onClick={() => setVesselHistoryPage((page) => Math.min(vesselHistoryPageCount, page + 1))}
+                        disabled={currentVesselHistoryPage === vesselHistoryPageCount}
+                      >
+                        NEXT
+                      </button>
+                    </div>
+                  </nav>
+                )}
               </>
             )}
           </section>

@@ -1,112 +1,99 @@
 [
   {
-    "module": "vessel",
-    "mode": "image",
-    "timestamp": "2026-08-28 22:00:07",
-    "filename": "Screenshot 2026-08-22 161502.png",
+    "image": "boat-analysis-1792138079596.png",
+    "vessel_info_image": "AM KIRTI-1_JPG.rf.ETQSITy3Sm1MvEVS6Zip.JPG",
+    "vessel_detection_performed": true,
+    "vessel_info_performed": true,
     "status": "Detected",
-    "count": 1,
+    "confidence": 97,
+    "timestamp": "2026-10-16 15:10:37",
+    "source": "Drone",
+    "estimated_size": "Large Vessel",
+    "vessel_origin": "Unknown",
+    "vessel_classifications": [
+      "Merchant Ship"
+    ],
+    "vessel_kinds": [
+      "Ship"
+    ],
     "results": [
       {
-        "label": "Foreign Ship",
-        "confidence": 76.0,
-        "sl_flag_detected": false,
+        "class_id": 1,
+        "label": "Merchant Ship",
+        "vessel_kind": "Ship",
+        "confidence": 97,
         "box": [
-          97.15872955322266,
-          38.090911865234375,
-          543.8739013671875,
-          314.5367736816406
+          59.88739013671875,
+          86.41826629638672,
+          730.3253173828125,
+          428.7358703613281
         ],
-        "detection_type": "ship"
+        "detection_type": "vessel"
       }
-    ]
-  },
-  {
-    "module": "vessel",
-    "mode": "image",
-    "timestamp": "2026-08-28 22:00:31",
-    "filename": "boat-analysis-1787730650364.png",
-    "status": "Detected",
+    ],
     "count": 1,
-    "results": [
+    "image_size": [
+      800,
+      495
+    ],
+    "vessel_info": {
+      "vessel_name": "KIrtt aM",
+      "port": "Lnu MONROVIA",
+      "imo_number": "IMO 9832925"
+    },
+    "vessel_info_detections": [
       {
-        "label": "Foreign Ship",
-        "confidence": 89.9,
-        "sl_flag_detected": false,
+        "field": "port",
+        "text": "Lnu MONROVIA",
+        "confidence": 88,
+        "ocr_confidence": 48.8,
         "box": [
-          0.24436035752296448,
-          28.368091583251953,
-          252.68942260742188,
-          184.02392578125
-        ],
-        "detection_type": "ship"
+          66,
+          286,
+          154,
+          325
+        ]
+      },
+      {
+        "field": "vessel_name",
+        "text": "KIrtt aM",
+        "confidence": 86.3,
+        "ocr_confidence": 30,
+        "box": [
+          67,
+          250,
+          161,
+          298
+        ]
+      },
+      {
+        "field": "imo_number",
+        "text": "IMO 9832925",
+        "confidence": 85.6,
+        "ocr_confidence": 35.9,
+        "box": [
+          73,
+          318,
+          143,
+          349
+        ]
       }
-    ]
-  },
-  {
+    ],
+    "demo": false,
+    "notes": "",
+    "record_id": "54aa2bf9b949453282f97d4044b8c948",
     "module": "vessel",
-    "mode": "image",
-    "timestamp": "2026-08-28 22:12:22",
-    "filename": "boat-analysis-1787934057893.png",
-    "status": "Detected",
-    "count": 1,
-    "results": [
-      {
-        "label": "Foreign Ship",
-        "confidence": 68.9,
-        "sl_flag_detected": false,
-        "box": [
-          99.22489166259766,
-          41.448551177978516,
-          540.4721069335938,
-          314.3839416503906
-        ],
-        "detection_type": "ship"
+    "cloudinary_images": {
+      "ship_image": {
+        "url": "https://res.cloudinary.com/dwe3p0ln/image/upload/v1792143634/oceaniq/vessels/96a28cfc92274d1d9290c96f7ae7c365_ship_image.png",
+        "public_id": "oceaniq/vessels/96a28cfc92274d1d9290c96f7ae7c365_ship_image"
+      },
+      "vessel_info_image": {
+        "url": "https://res.cloudinary.com/dwe3p0ln/image/upload/v1792143637/oceaniq/vessels/d726df128d244b77bd1b2e2ccd9873bb_vessel_info_image.jpg",
+        "public_id": "oceaniq/vessels/d726df128d244b77bd1b2e2ccd9873bb_vessel_info_image"
       }
-    ]
-  },
-  {
-    "module": "vessel",
-    "mode": "image",
-    "timestamp": "2026-08-28 22:12:32",
-    "filename": "boat-analysis-1787730650364.png",
-    "status": "Detected",
-    "count": 1,
-    "results": [
-      {
-        "label": "Foreign Ship",
-        "confidence": 89.9,
-        "sl_flag_detected": false,
-        "box": [
-          0.24436035752296448,
-          28.368091583251953,
-          252.68942260742188,
-          184.02392578125
-        ],
-        "detection_type": "ship"
-      }
-    ]
-  },
-  {
-    "module": "vessel",
-    "mode": "image",
-    "timestamp": "2026-08-28 22:12:41",
-    "filename": "boat-analysis-1787934057893.png",
-    "status": "Detected",
-    "count": 1,
-    "results": [
-      {
-        "label": "Foreign Ship",
-        "confidence": 68.9,
-        "sl_flag_detected": false,
-        "box": [
-          99.22489166259766,
-          41.448551177978516,
-          540.4721069335938,
-          314.3839416503906
-        ],
-        "detection_type": "ship"
-      }
-    ]
+    },
+    "image_url": "https://res.cloudinary.com/dwe3p0ln/image/upload/v1792143634/oceaniq/vessels/96a28cfc92274d1d9290c96f7ae7c365_ship_image.png",
+    "vessel_info_image_url": "https://res.cloudinary.com/dwe3p0ln/image/upload/v1792143637/oceaniq/vessels/d726df128d244b77bd1b2e2ccd9873bb_vessel_info_image.jpg"
   }
 ]

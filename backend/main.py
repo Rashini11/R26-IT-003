@@ -26,7 +26,7 @@ from torchvision.models import MobileNet_V2_Weights
 from torchvision import transforms
 from PIL import Image, ImageStat, ImageEnhance, ImageFilter
 
-from fastapi import FastAPI, UploadFile, File, Form, Body, Depends
+from fastapi import FastAPI, UploadFile, File, Form, Body, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from ultralytics import YOLO
@@ -278,6 +278,17 @@ def _load_local_vessel_history():
     except Exception as e:
         print("Error loading local vessel history:", e)
         return []
+
+
+def _ensure_vessel_history_record_ids(history):
+    normalized_history = []
+    changed = False
+    for record in history:
+        if isinstance(record, dict) and not record.get("record_id"):
+            record = {**record, "record_id": uuid.uuid4().hex}
+            changed = True
+        normalized_history.append(record)
+    return normalized_history, changed
 
 
 def _save_local_vessel_history(history):
@@ -1541,18 +1552,50 @@ async def create_vessel_detection_record(
 
 @app.get("/vessel-detection-history", dependencies=[Depends(require_authenticated_request)])
 def get_vessel_detection_history():
+    local_history = _load_local_vessel_history()
+    local_history, ids_added = _ensure_vessel_history_record_ids(local_history)
+    if ids_added and not _save_local_vessel_history(local_history):
+        raise HTTPException(
+            status_code=500,
+            detail="Could not prepare saved vessel records for display.",
+        )
+
+    history = []
+    storage_sources = []
     if vessel_prediction_collection is not None:
         try:
-            history = list(
+            mongo_history = list(
                 vessel_prediction_collection.find({}, {"_id": 0}).sort("timestamp", -1)
             )
-            return {"history": history, "storage": "mongodb"}
+            history.extend(mongo_history)
+            storage_sources.append("mongodb")
         except Exception as e:
             print("Error loading vessel history from MongoDB; using JSON fallback:", e)
 
+    if local_history:
+        storage_sources.append("json")
+        existing_ids = {
+            record.get("record_id")
+            for record in history
+            if isinstance(record, dict) and record.get("record_id")
+        }
+        for record in local_history:
+            record_id = record.get("record_id") if isinstance(record, dict) else None
+            if record_id and record_id in existing_ids:
+                continue
+            history.append(record)
+            if record_id:
+                existing_ids.add(record_id)
+
+    history.sort(
+        key=lambda record: str(record.get("timestamp") or "")
+        if isinstance(record, dict)
+        else "",
+        reverse=True,
+    )
     return {
-        "history": list(reversed(_load_local_vessel_history())),
-        "storage": "json",
+        "history": history,
+        "storage": " + ".join(storage_sources) if storage_sources else "json",
     }
 
 

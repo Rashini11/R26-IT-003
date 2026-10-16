@@ -1105,6 +1105,37 @@ p { margin: 0; }
   background: rgba(1, 10, 18, 0.38);
 }
 
+.vessel-history-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 4px 2px;
+  color: var(--text-400);
+  font: 10px var(--font-mono);
+}
+
+.vessel-history-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vessel-history-pagination button {
+  padding: 7px 10px;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--r-xs);
+  background: rgba(0, 212, 255, 0.07);
+  color: var(--cyan);
+  cursor: pointer;
+  font: 9px var(--font-mono);
+}
+
+.vessel-history-pagination button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .vessel-record-table {
   width: 100%;
   min-width: 860px;
@@ -1292,6 +1323,11 @@ p { margin: 0; }
   .vessel-detected-type {
     min-height: 58px;
     font-size: 16px;
+  }
+
+  .vessel-history-pagination {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .vessel-history-edit {
