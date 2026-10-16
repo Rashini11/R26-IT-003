@@ -14,6 +14,7 @@ class SimulationState:
         self.running = False
         self.starting = False
         self.simulation_id: str | None = None
+        self.recording_id: str | None = None
         self.mode: str | None = None
         self.frame_number = 0
         self.latest: dict[str, Any] | None = None
