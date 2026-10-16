@@ -930,7 +930,7 @@ async def predict_hull_defect(
 
 
 # =====================================================
-# SEA STATE MODEL - PYTORCH
+# SEA STATE MODEL Preprocessing - PYTORCH
 # =====================================================
 sea_model = None
 sea_external_model = None
@@ -1594,7 +1594,11 @@ def clear_hull_prediction_history():
         "message": "Hull prediction history cleared successfully",
         "deleted_count": deleted_count
     }
+#--------------------#
 
+# sea state analysis #
+
+#--------------------#
 
 def run_sea_state_analysis(
     image_path,
@@ -2020,6 +2024,11 @@ def run_sea_state_analysis(
         traceback.print_exc()
         return {"error": f"Sea-state prediction failed: {str(e)}"}
 
+#_______________________#
+
+# sea state input image #
+
+#_______________________#
 
 @app.post("/predict-sea-state", dependencies=[Depends(require_authenticated_request)])
 async def predict_sea_state(
