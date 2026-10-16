@@ -1026,8 +1026,10 @@ p { margin: 0; }
 
 .vessel-edit-grid input,
 .vessel-edit-grid textarea,
+.vessel-edit-grid select,
 .vessel-history-edit input,
-.vessel-history-edit textarea {
+.vessel-history-edit textarea,
+.vessel-history-edit select {
   width: 100%;
   min-width: 0;
   padding: 9px 10px;
@@ -1042,8 +1044,10 @@ p { margin: 0; }
 
 .vessel-edit-grid input:focus,
 .vessel-edit-grid textarea:focus,
+.vessel-edit-grid select:focus,
 .vessel-history-edit input:focus,
-.vessel-history-edit textarea:focus {
+.vessel-history-edit textarea:focus,
+.vessel-history-edit select:focus {
   border-color: rgba(0, 212, 255, 0.7);
 }
 
