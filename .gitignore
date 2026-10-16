@@ -282,5 +282,9 @@ backend/node_modules/
 # Vessel detection generated training checkpoint
 best.pt
 
+# Required vessel detection models
+!model/Vessel-info-detector-model.pt
+!model/ship-detection-model.pt
+
 # Hull condition assessment test images
 test_images/
