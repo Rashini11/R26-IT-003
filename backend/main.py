@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import shutil
 import base64
@@ -7,18 +7,18 @@ import traceback
 import uuid
 import subprocess
 import asyncio
+import re
+import math
+import threading
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import urlparse
 
 import tensorflow as tf
 import numpy as np
 import cv2
-
-try:
-    import imageio_ffmpeg
-except ImportError:
-    imageio_ffmpeg = None
 
 import torch
 import torch.nn as nn
@@ -28,12 +28,13 @@ from torchvision.models import MobileNet_V2_Weights
 from torchvision import transforms
 from PIL import Image, ImageStat, ImageEnhance, ImageFilter
 
-from fastapi import FastAPI, UploadFile, File, Form, Depends
+from fastapi import FastAPI, UploadFile, File, Form, Body, Depends, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from ultralytics import YOLO
+import requests
 
 import time
 
@@ -186,13 +187,6 @@ LABEL_MAP_PATH = os.path.join(
     "label_map.json",
 )
 
-BOAT_MODEL_PATH = BASE_PATH / "backend" / "best.pt"
-
-if not BOAT_MODEL_PATH.exists():
-    BOAT_MODEL_PATH = BASE_PATH / "model" / "boat_detection.pt"
-
-if not BOAT_MODEL_PATH.exists():
-    BOAT_MODEL_PATH = BASE_PATH / "model" / "boat_detection_last.pt"
 
 RADAR_MODEL_PATH = (
     BASE_PATH
@@ -218,7 +212,6 @@ RADAR_UNKNOWN_THRESHOLD = None
 # =====================================================
 SEA_HISTORY_FILE = BASE_PATH / "backend" / "sea_prediction_history.json"
 HULL_HISTORY_FILE = BASE_PATH / "backend" / "hull_prediction_history.json"
-VESSEL_HISTORY_FILE = BASE_PATH / "backend" / "vessel_prediction_history.json"
 sea_state_collection = None
 hull_prediction_collection = None
 radar_prediction_collection = None
@@ -316,30 +309,6 @@ def _save_local_hull_history(history):
     except Exception as e:
         print("Error saving local hull history:", e)
         return False
-
-
-def _load_local_vessel_history():
-    try:
-        if not VESSEL_HISTORY_FILE.exists():
-            return []
-        with open(VESSEL_HISTORY_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, list) else []
-    except Exception as e:
-        print("Error loading local vessel history:", e)
-        return []
-
-
-def _save_local_vessel_history(history):
-    try:
-        VESSEL_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(VESSEL_HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(history, f, indent=2)
-        return True
-    except Exception as e:
-        print("Error saving local vessel history:", e)
-        return False
-
 
 
 # =====================================================
@@ -1741,51 +1710,6 @@ def save_hull_prediction_record(record):
     return None
 
 
-def save_vessel_prediction_record(record):
-    if vessel_prediction_collection is not None:
-        try:
-            result = vessel_prediction_collection.insert_one(record.copy())
-            return str(result.inserted_id)
-        except Exception as e:
-            print("Error saving vessel prediction to MongoDB; using JSON fallback:", e)
-
-    history = _load_local_vessel_history()
-    history.append(record)
-    _save_local_vessel_history(history[-500:])
-    return None
-
-
-@app.get("/vessel-detection-history", dependencies=[Depends(require_authenticated_request)])
-def get_vessel_detection_history():
-    if vessel_prediction_collection is not None:
-        try:
-            history = list(
-                vessel_prediction_collection.find({}, {"_id": 0}).sort("timestamp", -1)
-            )
-            return {"history": history, "storage": "mongodb"}
-        except Exception as e:
-            print("Error loading vessel history from MongoDB; using JSON fallback:", e)
-
-    return {
-        "history": list(reversed(_load_local_vessel_history())),
-        "storage": "json",
-    }
-
-
-@app.delete("/vessel-detection-history", dependencies=[Depends(require_authenticated_request)])
-def clear_vessel_detection_history():
-    deleted_count = 0
-    if vessel_prediction_collection is not None:
-        try:
-            deleted_count = vessel_prediction_collection.delete_many({}).deleted_count
-        except Exception as e:
-            print("Error clearing vessel history from MongoDB:", e)
-
-    local_history = _load_local_vessel_history()
-    deleted_count += len(local_history)
-    _save_local_vessel_history([])
-    return {"message": "Vessel prediction history cleared successfully", "deleted_count": deleted_count}
-
 @app.get(
     "/hull-prediction-history",
     dependencies=[Depends(require_authenticated_request)]
@@ -2356,166 +2280,94 @@ def clear_sea_state_history():
     }
 
 
+# Vessel Detection: import its API routes and model handles after shared app setup.
+from .vessel_detection.routes.detection_routes import router as detection_router
+from .vessel_detection.services.model_loader import ship_detection_model, vessel_info_model
+
 # =====================================================
-# VESSEL DETECTION MODEL - YOLO
-# Class order for the retrained model: boat, ship, sl_flag.
+# VESSEL DETECTION - MODULAR IMPLEMENTATION
 # =====================================================
-boat_model = None
-
-VESSEL_CLASS_BOAT = 0
-VESSEL_CLASS_SHIP = 1
-VESSEL_CLASS_SL_FLAG = 2
-
-
-def infer_vessel_origin(detections):
-    if not detections:
-        return "Unknown"
-
-    top_detection = max(detections, key=lambda item: item.get("confidence", 0))
-    label = (top_detection.get("label") or "").lower()
-
-    if "local ship" in label:
-        return "Local Ship"
-    if "foreign ship" in label:
-        return "Foreign Ship"
-    if "local boat" in label:
-        return "Local Boat"
-    if "foreign boat" in label:
-        return "Foreign Boat"
-    return "Unknown"
+# Public Vessel endpoints are provided by detection_router.
+# run_boat_detection_analysis is retained as a compatibility
+# runner for the integrated Chat Assistant.
+# =====================================================
 
 
-def infer_vessel_classifications(detections):
-    classifications = []
+def _annotate_chatbot_vessel_detections(
+    image,
+    detections,
+):
+    annotated = image.copy()
+
     for detection in detections or []:
-        label = detection.get("label") or ""
-        normalized = label.strip().lower()
-        if normalized in {"local boat", "foreign boat", "local ship", "foreign ship"}:
-            classification = " ".join(word.capitalize() for word in normalized.split())
-            if classification not in classifications:
-                classifications.append(classification)
-    return classifications or ([infer_vessel_origin(detections)] if detections else [])
-
-
-def infer_estimated_size(detections):
-    if not detections:
-        return "No Vessel"
-
-    top_detection = max(detections, key=lambda item: item.get("confidence", 0))
-    label = (top_detection.get("label") or "").lower()
-    confidence = top_detection.get("confidence", 0)
-
-    if confidence >= 85 and any(keyword in label for keyword in ["cargo", "container", "ship", "vessel"]):
-        return "Large Vessel"
-
-    if any(keyword in label for keyword in ["small", "fishing"]):
-        return "Small Vessel"
-
-    return "Medium Vessel"
-
-
-def ship_has_local_flag(ship_box, flag_boxes, min_overlap=0.25):
-    """Match an sl_flag to a ship using the fraction of flag area overlapped."""
-    flag_x1, flag_y1, flag_x2, flag_y2 = flag_boxes
-    flag_area = max(0, flag_x2 - flag_x1) * max(0, flag_y2 - flag_y1)
-    if flag_area <= 0:
-        return False
-
-    ship_x1, ship_y1, ship_x2, ship_y2 = ship_box
-    intersection = max(0, min(ship_x2, flag_x2) - max(ship_x1, flag_x1)) * max(
-        0,
-        min(ship_y2, flag_y2) - max(ship_y1, flag_y1),
-    )
-    return intersection / flag_area >= min_overlap
-
-
-def build_demo_boat_detection_response():
-    return {
-        "image": "demo-drone-scene.jpg",
-        "status": "Detected",
-        "confidence": 89.4,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "source": "Drone",
-        "estimated_size": "Large Vessel",
-        "vessel_origin": "Local Boat",
-        "results": [
-            {
-                "label": "Cargo Vessel",
-                "confidence": 89.4,
-            }
-        ],
-        "count": 1,
-        "demo": True,
-    }
-
-
-try:
-    if not BOAT_MODEL_PATH.exists():
-        print(
-            "ERROR: No boat detection "
-            "weights file found!"
-        )
-        boat_model = None
-
-    else:
-        print(
-            "Loading boat detection "
-            "model from:",
-            BOAT_MODEL_PATH,
-        )
-
-        boat_model = YOLO(
-            str(BOAT_MODEL_PATH)
-        )
-
-        print(
-            "Boat detection model "
-            "loaded successfully"
-        )
-
-except Exception as e:
-    print(
-        "ERROR loading "
-        "boat model:",
-        e,
-    )
-    boat_model = None
-
-
-@app.get("/demo-boat-detection")
-async def get_demo_boat_detection():
-    return build_demo_boat_detection_response()
-
-
-def _annotate_vessel_detections(image_path, detections):
-    """Draw real detection boxes; returns JPEG base64 or None."""
-    image = cv2.imread(str(image_path))
-    if image is None or not detections:
-        return None
-
-    for detection in detections:
         box = detection.get("box")
-        if not box or len(box) != 4:
-            continue
-        x1, y1, x2, y2 = [int(v) for v in box]
-        color = (0, 165, 255) if detection.get("detection_type") == "flag" else (0, 220, 80)
-        cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
-        label = f"{detection.get('label', '')} {detection.get('confidence', '')}%"
-        cv2.putText(
-            image,
-            label,
-            (x1, max(20, y1 - 8)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            color,
-            2,
-            cv2.LINE_AA,
-        )
 
-    ok, buffer = cv2.imencode(".jpg", image)
-    if not ok:
+        if not box or len(box) < 4:
+            continue
+
+        try:
+            x1, y1, x2, y2 = [
+                int(float(value))
+                for value in box[:4]
+            ]
+
+            label = str(
+                detection.get("label")
+                or "Vessel"
+            )
+
+            confidence = detection.get(
+                "confidence"
+            )
+
+            if confidence is not None:
+                label = (
+                    f"{label} "
+                    f"{float(confidence):.1f}%"
+                )
+
+            cv2.rectangle(
+                annotated,
+                (x1, y1),
+                (x2, y2),
+                (0, 255, 0),
+                2,
+            )
+
+            cv2.putText(
+                annotated,
+                label,
+                (
+                    x1,
+                    max(20, y1 - 8),
+                ),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
+
+        except Exception as annotation_error:
+            print(
+                "Vessel annotation warning:",
+                annotation_error,
+            )
+
+    success, encoded_image = cv2.imencode(
+        ".jpg",
+        annotated,
+    )
+
+    if not success:
         return None
-    return base64.b64encode(buffer).decode("utf-8")
+
+    return (
+        "data:image/jpeg;base64,"
+        + base64.b64encode(
+            encoded_image.tobytes()
+        ).decode("utf-8")
+    )
 
 
 def run_boat_detection_analysis(
@@ -2525,370 +2377,189 @@ def run_boat_detection_analysis(
     source="manual_upload",
     include_annotation=False,
 ):
-    """Shared vessel detection used by the manual endpoint and Chat Assistant."""
-    if boat_model is None:
+    """
+    Compatibility runner used by the Chat Assistant.
+
+    The normal Vessel Detection frontend uses the modular
+    detection_router endpoints instead.
+    """
+
+    if ship_detection_model is None:
         return {
             "error": (
-                "Boat detection model "
-                "not loaded"
+                "Ship detection model "
+                "is not loaded"
             )
         }
 
     try:
-        if not filename:
-            return {"error": "No filename"}
+        from .vessel_detection.services.image_detection_service import (
+            extract_ship_detections,
+            infer_estimated_size,
+        )
 
-        filename_lower = filename.lower()
-        if not filename_lower.endswith(
-            (".png", ".jpg", ".jpeg", ".bmp", ".webp")
-        ):
-            return {
-                "error": f"Invalid file type: {filename_lower}"
-            }
+        from .vessel_detection.controllers.detection_controller import (
+            save_vessel_prediction_record,
+        )
 
         path = Path(image_path)
-        results = boat_model(
-            str(path),
-            conf=0.50,
+
+        if not path.exists():
+            return {
+                "error": "Vessel image was not found"
+            }
+
+        image = cv2.imread(
+            str(path)
+        )
+
+        if image is None:
+            return {
+                "error": "Invalid vessel image"
+            }
+
+        predictions = ship_detection_model(
+            image,
+            conf=0.25,
             iou=0.45,
             save=False,
             verbose=False,
         )
 
         detections = []
-        if results and len(results) > 0:
-            result = results[0]
-            if result.boxes is not None and len(result.boxes) > 0:
-                for box in result.boxes:
-                    try:
-                        cls_id = (
-                            int(box.cls.item())
-                            if box.cls is not None
-                            else 0
-                        )
-                        conf = (
-                            float(box.conf.item())
-                            if box.conf is not None
-                            else 0
-                        )
-                        if conf < 0.50:
-                            continue
-                        label = boat_model.names.get(
-                            cls_id,
-                            f"class_{cls_id}",
-                        )
-                        detections.append({
-                            "class_id": cls_id,
-                            "label": label,
-                            "confidence": round(conf * 100, 1),
-                            "box": [float(value) for value in box.xyxy[0].tolist()],
-                        })
-                    except Exception as e:
-                        print("Error parsing box:", e)
 
-        flag_boxes = [
-            detection["box"]
-            for detection in detections
-            if detection["class_id"] == VESSEL_CLASS_SL_FLAG
-        ]
-        image_size = None
-        if results and len(results) > 0 and results[0].orig_shape:
-            image_height, image_width = results[0].orig_shape[:2]
-            image_size = [int(image_width), int(image_height)]
-
-        vessel_detections = []
-        flag_detections = []
-        for detection in detections:
-            if detection["class_id"] == VESSEL_CLASS_SL_FLAG:
-                flag_detections.append({
-                    "label": "SL Flag",
-                    "confidence": detection["confidence"],
-                    "box": detection["box"],
-                    "detection_type": "flag",
-                })
-                continue
-            if detection["class_id"] not in (VESSEL_CLASS_BOAT, VESSEL_CLASS_SHIP):
-                continue
-
-            is_local = any(
-                ship_has_local_flag(detection["box"], flag_box)
-                for flag_box in flag_boxes
+        if predictions:
+            detections = (
+                extract_ship_detections(
+                    predictions[0],
+                    ship_detection_model,
+                )
+                or []
             )
-            vessel_type = (
-                "Boat"
-                if detection["class_id"] == VESSEL_CLASS_BOAT
-                else "Ship"
-            )
-            vessel_detections.append({
-                "label": f"{'Local' if is_local else 'Foreign'} {vessel_type}",
-                "confidence": detection["confidence"],
-                "sl_flag_detected": is_local,
-                "box": detection["box"],
-                "detection_type": vessel_type.lower(),
-            })
 
-        vessel_detections = sorted(
-            vessel_detections,
-            key=lambda detection: detection["confidence"],
+        detections.sort(
+            key=lambda item: item.get(
+                "confidence",
+                0,
+            ),
             reverse=True,
-        )[:1]
-        flag_detections = sorted(
-            flag_detections,
-            key=lambda detection: detection["confidence"],
-            reverse=True,
-        )[:1]
-        all_detections = vessel_detections + flag_detections
-        confidence_value = round(
-            max((d["confidence"] for d in vessel_detections), default=0),
-            1,
+        )
+
+        image_height, image_width = (
+            image.shape[:2]
+        )
+
+        confidence = max(
+            (
+                item.get(
+                    "confidence",
+                    0,
+                )
+                for item in detections
+            ),
+            default=0,
+        )
+
+        vessel_classifications = list(
+            dict.fromkeys(
+                item.get("label")
+                for item in detections
+                if item.get("label")
+            )
+        )
+
+        vessel_kinds = list(
+            dict.fromkeys(
+                item.get("vessel_kind")
+                for item in detections
+                if item.get("vessel_kind")
+            )
         )
 
         response = {
-            "image": filename,
-            "status": "Detected" if all_detections else "No Vessel Detected",
-            "confidence": confidence_value,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "image": Path(
+                filename or path.name
+            ).name,
+            "status": (
+                "Detected"
+                if detections
+                else "No Vessel Detected"
+            ),
+            "confidence": confidence,
+            "timestamp": datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
             "source": "Drone",
-            "estimated_size": infer_estimated_size(vessel_detections),
-            "vessel_origin": infer_vessel_origin(vessel_detections),
-            "results": all_detections,
-            "count": len(vessel_detections),
-            "image_size": image_size,
+            "estimated_size": (
+                infer_estimated_size(
+                    detections
+                )
+            ),
+            "vessel_origin": "Unknown",
+            "vessel_classifications": (
+                vessel_classifications
+            ),
+            "vessel_kinds": vessel_kinds,
+            "results": detections,
+            "count": len(detections),
+            "image_size": [
+                int(image_width),
+                int(image_height),
+            ],
             "demo": False,
         }
 
         if include_annotation:
-            response["annotated_image"] = _annotate_vessel_detections(
-                path,
-                all_detections,
+            annotated_image = (
+                _annotate_chatbot_vessel_detections(
+                    image,
+                    detections,
+                )
             )
+
+            if annotated_image:
+                response[
+                    "annotated_image"
+                ] = annotated_image
 
         if persist:
             record = {
                 key: value
-                for key, value in response.items()
+                for key, value
+                in response.items()
                 if key != "annotated_image"
             }
+
             record.update({
                 "module": "vessel",
                 "mode": "image",
                 "request_source": source,
             })
-            save_vessel_prediction_record(record)
+
+            save_vessel_prediction_record(
+                record
+            )
+
         return response
 
-    except Exception as e:
-        print("ERROR:", e)
+    except Exception as error:
+        print(
+            "Vessel chatbot inference error:",
+            error,
+        )
+
         traceback.print_exc()
-        return {"error": f"Inference failed: {str(e)}"}
 
-
-@app.post("/predict-boat-detection", dependencies=[Depends(require_authenticated_request)])
-async def predict_boat_detection(
-    file: UploadFile = File(...),
-):
-    if boat_model is None:
         return {
             "error": (
-                "Boat detection model "
-                "not loaded"
+                "Vessel inference failed: "
+                f"{str(error)}"
             )
         }
 
-    if not file.filename:
-        return {"error": "No filename"}
 
-    filename_lower = file.filename.lower()
-    if not filename_lower.endswith(
-        (".png", ".jpg", ".jpeg", ".bmp")
-    ):
-        return {
-            "error": f"Invalid file type: {filename_lower}"
-        }
-
-    tmp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".png",
-        ) as tmp:
-            contents = await file.read()
-            tmp.write(contents)
-            tmp_path = tmp.name
-
-        return await asyncio.to_thread(
-            run_boat_detection_analysis,
-            tmp_path,
-            file.filename,
-            True,
-            "manual_upload",
-            False,
-        )
-    finally:
-        if tmp_path is not None:
-            Path(tmp_path).unlink(missing_ok=True)
-
-
-@app.post("/predict-boat-video", dependencies=[Depends(require_authenticated_request)])
-async def predict_boat_video(file: UploadFile = File(...)):
-    """Detect vessels in every video frame and return an annotated video."""
-    if boat_model is None:
-        return {"error": "Boat detection model not loaded"}
-
-    allowed_extensions = (".mp4", ".avi", ".mov", ".mkv", ".webm")
-    filename = Path(file.filename or "").name
-    if not filename.lower().endswith(allowed_extensions):
-        return {"error": "Invalid video file type"}
-
-    input_path = TEMP_DIR / f"{uuid.uuid4().hex}_{filename}"
-    output_name = f"boat_detection_{uuid.uuid4().hex}.mp4"
-    output_path = TEMP_DIR / output_name
-
-    try:
-        input_path.write_bytes(await file.read())
-        capture = cv2.VideoCapture(str(input_path))
-        if not capture.isOpened():
-            return {"error": "Unable to read video file"}
-
-        width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = capture.get(cv2.CAP_PROP_FPS)
-        fps = fps if fps and fps > 0 else 25.0
-        writer = cv2.VideoWriter(
-            str(output_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height)
-        )
-        if not writer.isOpened():
-            capture.release()
-            return {"error": "Unable to create annotated video"}
-
-        detected_labels = {}
-        frame_count = 0
-        while True:
-            success, frame = capture.read()
-            if not success:
-                break
-            frame_results = boat_model(
-                frame, conf=0.50, iou=0.45, save=False, verbose=False
-            )
-            if frame_results:
-                frame_result = frame_results[0]
-                if frame_result.boxes is not None:
-                    frame_detections = []
-                    for box in frame_result.boxes:
-                        confidence = float(box.conf.item())
-                        if confidence < 0.50:
-                            continue
-                        class_id = int(box.cls.item())
-                        frame_detections.append({
-                            "class_id": class_id,
-                            "confidence": confidence * 100,
-                            "box": [float(value) for value in box.xyxy[0].tolist()],
-                        })
-
-                    flag_boxes = [
-                        detection["box"]
-                        for detection in frame_detections
-                        if detection["class_id"] == VESSEL_CLASS_SL_FLAG
-                    ]
-                    for detection in frame_detections:
-                        if detection["class_id"] not in (VESSEL_CLASS_BOAT, VESSEL_CLASS_SHIP):
-                            continue
-
-                        is_local = any(
-                            ship_has_local_flag(detection["box"], flag_box)
-                            for flag_box in flag_boxes
-                        )
-                        vessel_type = (
-                            "Boat"
-                            if detection["class_id"] == VESSEL_CLASS_BOAT
-                            else "Ship"
-                        )
-                        label = f"{'Local' if is_local else 'Foreign'} {vessel_type}"
-                        detected_labels[label] = detected_labels.get(label, 0) + 1
-                frame = frame_result.plot()
-            writer.write(frame)
-            frame_count += 1
-
-        capture.release()
-        writer.release()
-        if frame_count == 0 or not output_path.exists():
-            return {"error": "Video contains no readable frames"}
-
-        # OpenCV's mp4v output is not decoded by some browsers. Re-encode it
-        # as H.264 with a browser-friendly pixel format and metadata order.
-        browser_output_path = TEMP_DIR / f"browser_{output_name}"
-        try:
-            if imageio_ffmpeg is None:
-                raise RuntimeError("imageio-ffmpeg is not installed")
-            subprocess.run(
-                [
-                    imageio_ffmpeg.get_ffmpeg_exe(),
-                    "-y",
-                    "-i",
-                    str(output_path),
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    "-movflags",
-                    "+faststart",
-                    "-an",
-                    str(browser_output_path),
-                ],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            output_path.unlink(missing_ok=True)
-            browser_output_path.replace(output_path)
-        except (OSError, subprocess.CalledProcessError) as conversion_error:
-            browser_output_path.unlink(missing_ok=True)
-            print("Browser video conversion failed; keeping OpenCV output:", conversion_error)
-
-        results = [
-            {"label": label, "frames_detected": count}
-            for label, count in sorted(
-                detected_labels.items(), key=lambda item: item[1], reverse=True
-            )
-        ]
-        response = {
-            "image": filename,
-            "status": "Detected" if results else "No Vessel Detected",
-            "results": results,
-            "video_detections": results,
-            "count": len(results),
-            "frame_count": frame_count,
-            "video_url": f"/boat-detection-video/{output_name}",
-        }
-        response["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        response["vessel_origin"] = (
-            "Local" if any(label.startswith("Local") for label in detected_labels)
-            else "Foreign" if detected_labels else "Unknown"
-        )
-        response["vessel_classifications"] = infer_vessel_classifications(
-            [{"label": label} for label in detected_labels]
-        )
-        save_vessel_prediction_record({
-            **response,
-            "module": "vessel",
-            "mode": "video",
-        })
-        return response
-    except Exception as e:
-        traceback.print_exc()
-        output_path.unlink(missing_ok=True)
-        return {"error": f"Video inference failed: {str(e)}"}
-    finally:
-        input_path.unlink(missing_ok=True)
-
-
-@app.get("/boat-detection-video/{filename}", dependencies=[Depends(require_authenticated_request)])
-async def get_boat_detection_video(filename: str):
-    safe_name = Path(filename).name
-    video_path = TEMP_DIR / safe_name
-    if not video_path.exists() or video_path.suffix.lower() != ".mp4":
-        return {"error": "Annotated video not found"}
-    return FileResponse(video_path, media_type="video/mp4", filename=safe_name)
+# Register the latest Vessel Detection API routes.
+app.include_router(detection_router)
 
 
 # =====================================================
@@ -3505,8 +3176,12 @@ def health():
             "sea_model_loaded": (
                 sea_model is not None
             ),
+            # Check startup status for both Vessel Detection models.
             "boat_model_loaded": (
-                boat_model is not None
+                ship_detection_model is not None
+            ),
+            "vessel_info_model_loaded": (
+                vessel_info_model is not None
             ),
             "radar_cnn_loaded": (
                 radar_model is not None

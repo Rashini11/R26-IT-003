@@ -41,6 +41,23 @@ Open `http://127.0.0.1:5173`.
 Chat documentation: [`docs/CHAT_ASSISTANT.md`](docs/CHAT_ASSISTANT.md)  
 Simulation details: [`backend/simulation/README.md`](backend/simulation/README.md)
 
+## Vessel Detection
+
+Vessel Detection analyzes still images with `model/ship-detection-model.pt` and
+can analyze a separate stern image with `model/Vessel-info-detector-model.pt`
+for vessel name, port and IMO details. Ship Detection also accepts MP4, MOV, AVI,
+MKV and WEBM videos up to 100 MB and 5 minutes, sampling one frame per second.
+Video and sampled frames are temporary inference inputs only: they are not sent
+to Cloudinary or saved in the database. Image-based results can be reviewed,
+edited and submitted; saved records can be updated or deleted from the history
+table.
+
+Set valid Cloudinary credentials in `backend/.env` before submitting records so
+their images can be stored. Use either `CLOUDINARY_URL` or the
+`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET`
+variables. Set `MONGO_URI` to persist records in MongoDB; without it, the
+backend uses its local JSON history fallback.
+
 ## Research boundary
 
 SAR/radar images are used for appearance classification. Sequential AIS records provide latitude, longitude, speed and course for motion forecasting. Independent still images are not a source of vessel speed or collision risk. Constructed encounters are labelled simulations.

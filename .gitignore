@@ -283,7 +283,11 @@ backend/node_modules/
 # Vessel detection generated training checkpoint
 best.pt
 
-# Hull condition assessment test images 
+# Required vessel detection models
+!model/Vessel-info-detector-model.pt
+!model/ship-detection-model.pt
+
+# Hull condition assessment test images
 test_images/
 
 debug/
@@ -300,3 +304,4 @@ backend/main_before_severity_final.py
 # Local model training backups
 model/train_hull_validator_backup.py
 model/hull_validator_hardneg_backup.keras
+
