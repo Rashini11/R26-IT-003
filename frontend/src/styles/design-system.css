@@ -1,0 +1,111 @@
+/* OceanIQ redesign tokens — visual reference: oceaniq-redesign HTML */
+
+:root {
+  --bg: #07111f;
+  --bg-void: #07111f;
+  --bg-surface: #0a1524;
+  --panel: #0d1a2c;
+  --panel-2: #11233a;
+  --bg-panel: #0d1a2c;
+  --bg-panel-hi: #11233a;
+  --bg-glass: rgba(6, 16, 29, 0.92);
+
+  --line: #1f3b56;
+  --border: #1f3b56;
+  --border-hi: #295676;
+  --border-glow: rgba(102, 214, 255, 0.35);
+
+  --text: #e8f4ff;
+  --text-100: #e8f4ff;
+  --muted: #7f9ab4;
+  --text-200: #7f9ab4;
+  --text-300: #6f8ca6;
+  --text-400: #4d6982;
+
+  --cyan: #66d6ff;
+  --mint: #72e5b1;
+  --amber: #ffbd74;
+  --orange: #ffbd74;
+  --danger: #ff6b85;
+  --warn: #ffbd74;
+  --success: #72e5b1;
+
+  --cyan-dim: rgba(102, 214, 255, 0.12);
+  --cyan-mid: rgba(102, 214, 255, 0.35);
+  --mint-dim: rgba(114, 229, 177, 0.14);
+  --amber-dim: rgba(255, 189, 116, 0.16);
+  --danger-dim: rgba(255, 107, 133, 0.14);
+
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+  --focus-ring: 0 0 0 3px rgba(102, 214, 255, 0.28);
+
+  --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 14px;
+  --fs-body: 15px;
+  --fs-lg: 16px;
+  --fs-title: 24px;
+  --fs-hero: clamp(32px, 4vw, 44px);
+
+  --space-1: 6px;
+  --space-2: 10px;
+  --space-3: 14px;
+  --space-4: 18px;
+  --space-5: 24px;
+  --space-6: 34px;
+
+  --r-control: 10px;
+  --r-card: 18px;
+  --r-xs: 8px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+
+  --sidebar-w: 272px;
+  --content-max: 1400px;
+  --bp-phone: 560px;
+  --bp-tablet: 900px;
+  --bp-laptop: 1180px;
+}
+
+html[data-theme="light"] {
+  --bg: #eef4f8;
+  --bg-void: #eef4f8;
+  --bg-surface: #f5f9fc;
+  --panel: #ffffff;
+  --panel-2: #f0f6fa;
+  --bg-panel: #ffffff;
+  --bg-panel-hi: #f4f9fc;
+  --bg-glass: rgba(255, 255, 255, 0.92);
+  --line: #c5d7e6;
+  --border: #c5d7e6;
+  --border-hi: #9ebbd0;
+  --text: #102433;
+  --text-100: #102433;
+  --muted: #4f6b80;
+  --text-200: #4f6b80;
+  --text-300: #6a8498;
+  --text-400: #8aa0b2;
+  --cyan: #1591c2;
+  --mint: #1f9d6e;
+  --amber: #c97a22;
+  --orange: #c97a22;
+  --danger: #c63d57;
+  --warn: #c97a22;
+  --success: #1f9d6e;
+  --shadow: 0 18px 40px rgba(30, 64, 80, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

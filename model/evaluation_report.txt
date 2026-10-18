@@ -6,7 +6,7 @@ Train Size: 5040
 Validation Size: 1080
 Test Size: 1080
 
-Final Test Accuracy: 96.94%
+Final Test Accuracy: 76.94%
 
 Classification Report:
               precision    recall  f1-score   support
@@ -25,3 +25,5 @@ Confusion Matrix:
  [  7 265   0   0]
  [  2   6 263   0]
  [  0   0   3 265]]
+
+

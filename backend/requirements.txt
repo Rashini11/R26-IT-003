@@ -8,6 +8,7 @@ imageio-ffmpeg
 torch
 torchvision
 ultralytics
+easyocr
 tensorflow
 scikit-learn
 pandas

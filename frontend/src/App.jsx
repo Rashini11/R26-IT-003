@@ -23,7 +23,6 @@ import {
   Upload,
   Activity,
   Cpu,
-  Shield,
   Eye,
   EyeOff,
   AlertTriangle,
@@ -32,7 +31,7 @@ import {
   ScanEye,
   Zap,
   BarChart2,
-  Crosshair,
+  Film,
   ChevronRight,
   Network,
   Globe,
@@ -41,8 +40,12 @@ import {
   Navigation,
   UserRoundCog,
   LockKeyhole,
+  MessageSquare,
+  Home,
 } from "lucide-react";
 import LiveSimulation from "./LiveSimulation";
+import ChatAssistant from "./ChatAssistant";
+import HomePage from "./HomePage";
 
 import DatabaseViewer from "./DatabaseViewer";
 
@@ -61,6 +64,25 @@ import MediaFitToggle from "./components/MediaFitToggle";
 import ThemeToggle from "./components/ThemeToggle";
 import { useAuth } from "./context/AuthContext";
 import { useTheme } from "./context/ThemeContext";
+// Vessel Detection page, results, overlays, and saved-record components.
+import VesselDetectionPage from "./features/vessel-detection/pages/VesselDetectionPage";
+import BoatDetectionOverlay from "./features/vessel-detection/components/BoatDetectionOverlay";
+import VesselDetectionResults from "./features/vessel-detection/components/VesselDetectionResults";
+import VesselDetectionHistory from "./features/vessel-detection/components/VesselDetectionHistory";
+import VesselImageLightbox from "./features/vessel-detection/components/VesselImageLightbox";
+import {
+  filterVesselDetections,
+  parseVesselClassifications,
+  VESSEL_HISTORY_PAGE_SIZE,
+} from "./features/vessel-detection/utils/vesselDetectionUtils";
+import {
+  createVesselRecord,
+  deleteVesselRecord,
+  getVesselHistory,
+  predictVesselImage,
+  predictVesselVideo,
+  updateVesselRecord as updateVesselRecordRequest,
+} from "./features/vessel-detection/api/vesselDetectionApi";
 import "./App.css";
 
 /* ══════════════════════════════════════════════════════════
@@ -75,124 +97,123 @@ const API_BASE_URL =
    color identity used throughout the UI.
    ══════════════════════════════════════════════════════════ */
 const MODULES = {
+  home: {
+    id: "home",
+    label: "Home",
+    title: "Home",
+    endpoint: null,
+    description:
+      "Welcome to OceanIQ — a research decision-support workspace for maritime image analysis and vessel-motion interpretation.",
+    icon: Home,
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
+    tag: "Workspace overview",
+    statusLabel: "Overview",
+  },
   hull: {
     id: "hull",
-    label: "Hull Defect",
-    title: "Hull Defect Detection",
+    label: "Hull Condition",
+    title: "Hull Condition",
     endpoint: `${API_BASE_URL}/predict-hull-defect`,
-    description: "CNN-based detection of corrosion, cracks, and biofouling, and paint damage with Grad-CAM explainability.",
+    description: "Assess underwater hull imagery for corrosion, cracks, biofouling and paint damage, with Grad-CAM highlighting influential regions.",
     icon: Anchor,
-    color: "#00d4ff",
-    lightColor: "#007fa5",
-    colorDim: "#00d4ff22",
-    colorMid: "#00d4ff55",
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
     tag: "CNN · Grad-CAM",
-    statusLabel: "HULL SCANNER",
+    statusLabel: "Hull intake",
   },
   sea: {
     id: "sea",
     label: "Sea State",
-    title: "Sea State Classification",
+    title: "Sea State",
     endpoint: `${API_BASE_URL}/predict-sea-state`,
-    description: "Multi-class deep learning model classifying sea surface conditions from imagery.",
+    description: "Classify sea-surface conditions (calm, moderate, rough, very_rough) from imagery, with validation and decision-support notes.",
     icon: Waves,
-    color: "#00ffb3",
-    lightColor: "#008f6a",
-    colorDim: "#00ffb322",
-    colorMid: "#00ffb355",
+    color: "#72e5b1",
+    lightColor: "#1f9d6e",
+    colorDim: "#72e5b122",
+    colorMid: "#72e5b155",
     tag: "Multi-class CNN",
-    statusLabel: "SEA ANALYZER",
+    statusLabel: "Sea intake",
   },
   boat: {
+    // Vessel Detection uses its own image and video analysis flow.
     id: "boat",
     label: "Vessel Detection",
     title: "Vessel Detection",
     endpoint: `${API_BASE_URL}/predict-boat-detection`,
-    description: "YOLO-based real-time object detection for maritime vessel identification.",
+    description: "Identify vessel types and read the vessel name, port, and IMO number from separate images.",
     icon: Ship,
-    color: "#a78bfa",
-    lightColor: "#6d4cc7",
-    colorDim: "#a78bfa22",
-    colorMid: "#a78bfa55",
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
     tag: "YOLO · Object Detection",
-    statusLabel: "VESSEL TRACKER",
+    statusLabel: "Vessel intake",
   },
   radar: {
     id: "radar",
     label: "Radar Objects",
-    title: "Radar Object Classification",
+    title: "Radar Objects",
     endpoint: `${API_BASE_URL}/predict-radar-object`,
-    description: "Fused YOLO + CNN pipeline classifying radar signatures as bird, ship, or unknown.",
+    description: "Three-class RadarTargetCNN for radar screenshots: bird, ship, or unknown.",
     icon: RadioTower,
-    color: "#f97316",
-    lightColor: "#b9530b",
-    colorDim: "#f9731622",
-    colorMid: "#f9731655",
-    tag: "YOLO + CNN Fusion",
-    statusLabel: "RADAR ANALYSIS",
+    color: "#ffbd74",
+    lightColor: "#c97a22",
+    colorDim: "#ffbd7422",
+    colorMid: "#ffbd7455",
+    tag: "RadarTargetCNN",
+    statusLabel: "Radar intake",
+  },
+  chat: {
+    id: "chat",
+    label: "Chat Assistant",
+    title: "Chat Assistant",
+    endpoint: `${API_BASE_URL}/chat/analyze`,
+    description: "Guided, deterministic image analysis using OceanIQ’s existing hull, sea-state, vessel and radar models — no LLM.",
+    icon: MessageSquare,
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
+    tag: "Guided · Multi-component",
+    statusLabel: "Guided analysis",
   },
   simulation: {
     id: "simulation",
     label: "Live Simulation",
-    title: "Live Maritime Simulation",
-    description: "Streams SAR images, replays two AIS trajectories, forecasts motion with the selected GRU and assesses DCPA/TCPA collision risk.",
+    title: "Live Simulation",
+    description: "Replay SAR/radar frames with AIS trajectories, GRU motion forecasts and DCPA/TCPA encounter-risk assessment.",
     icon: Navigation,
-    color: "#00d4ff",
-    lightColor: "#007fa5",
-    colorDim: "#00d4ff22",
-    colorMid: "#00d4ff55",
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
     tag: "SAR · AIS · GRU · CPA",
-    statusLabel: "SIMULATION CONTROL",
+    statusLabel: "Simulation control",
   },
 
   database: {
     id: "database",
     label: "Database",
-    title: "OceanIQ Database",
+    title: "Database",
     endpoint: null,
     description:
-      "Stored Radar classification and Live Simulation records.",
+      "Review stored radar classifications and live-simulation runs when MongoDB persistence is available.",
     icon: Layers,
-    color: "#38bdf8",
-    lightColor: "#0369a1",
-    colorDim: "#38bdf822",
-    colorMid: "#38bdf855",
-    tag: "MongoDB Records",
-    statusLabel: "DATABASE",
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
+    tag: "MongoDB records",
+    statusLabel: "History",
   },
 
 };
-
-function filterVesselDetections(detections = []) {
-  const isFlag = (detection) =>
-    detection?.detection_type === "flag" ||
-    detection?.label?.trim().toLowerCase() === "sl flag";
-  const confidenceOf = (detection) => Number(detection?.confidence) || 0;
-  const adjustedConfidence = (detection) => {
-    const rawConfidence = confidenceOf(detection);
-    const score = rawConfidence > 1 ? rawConfidence / 100 : rawConfidence;
-
-    if (score >= 0.90) {
-      return Number((75 + Math.random() * 14).toFixed(1));
-    }
-    if (score < 0.50) {
-      return Number((50 + Math.random() * 10).toFixed(1));
-    }
-    return Number((score * 100).toFixed(1));
-  };
-  const bestOf = (items) => items.reduce(
-    (best, detection) =>
-      !best || confidenceOf(detection) > confidenceOf(best) ? detection : best,
-    null,
-  );
-
-  const bestVessel = bestOf(detections.filter((detection) => !isFlag(detection)));
-  const bestFlag = bestOf(detections.filter(isFlag));
-  return [bestVessel, bestFlag].filter(Boolean).map((detection) => ({
-    ...detection,
-    confidence: adjustedConfidence(detection),
-  }));
-}
 
 /* ══════════════════════════════════════════════════════════
    RADAR GRID CANVAS BACKGROUND
@@ -296,27 +317,34 @@ function SystemClock() {
   return <span className="sys-clock">{time}</span>;
 }
 
-/* ══════════════════════════════════════════════════════════
-   SYSTEM STATUS ROWS — shows AI subsystem states
-   Blinking dots reinforce the "live system" aesthetic
-   ══════════════════════════════════════════════════════════ */
-const STATUS_LINES = [
-  { label: "AI ENGINE",   state: "ONLINE" },
-  { label: "MODEL CACHE", state: "READY" },
-  { label: "INFERENCE",   state: "ARMED" },
-  { label: "BACKEND",     state: "ACTIVE" },
-];
-
+/* Session facts only — no fabricated engine/cache/latency metrics */
 function StatusRows() {
+  const { user, canWrite, isAdmin, accessLevel } = useAuth();
+  const accessLabel = isAdmin
+    ? "Admin"
+    : canWrite
+      ? "Read / write"
+      : accessLevel === "read_only"
+        ? "Read only"
+        : "Limited";
+
   return (
     <div className="status-rows">
-      {STATUS_LINES.map((s) => (
-        <div className="status-row" key={s.label}>
-          <span className="status-blink" />
-          <span className="status-key">{s.label}</span>
-          <span className="status-val">{s.state}</span>
-        </div>
-      ))}
+      <div className="status-row">
+        <span className="status-blink" aria-hidden="true" />
+        <span className="status-key">Session</span>
+        <span className="status-val">Signed in</span>
+      </div>
+      <div className="status-row">
+        <span className="status-blink" aria-hidden="true" />
+        <span className="status-key">Access</span>
+        <span className="status-val">{accessLabel}</span>
+      </div>
+      <div className="status-row">
+        <span className="status-blink" aria-hidden="true" />
+        <span className="status-key">Account</span>
+        <span className="status-val">{user?.username || "—"}</span>
+      </div>
     </div>
   );
 }
@@ -349,13 +377,13 @@ function ConfidenceRing({ value, color }) {
           }}
         />
         <text x="55" y="51" textAnchor="middle"
-          fill="white" fontSize="17" fontWeight="700" fontFamily="'Space Mono', monospace">
+          fill="white" fontSize="17" fontWeight="700" fontFamily="Inter, system-ui, sans-serif">
           {Math.round(value)}%
         </text>
         <text x="55" y="66" textAnchor="middle"
-          fill="rgba(255,255,255,0.35)" fontSize="7.5" fontFamily="'Space Mono', monospace"
-          letterSpacing="1.5">
-          CONFIDENCE
+          fill="rgba(255,255,255,0.45)" fontSize="8" fontFamily="Inter, system-ui, sans-serif"
+          letterSpacing="1.2">
+          Confidence
         </text>
       </svg>
     </div>
@@ -393,72 +421,6 @@ function ProbBar({ label, value, color }) {
   );
 }
 
-function BoatDetectionOverlay({
-  result,
-  color,
-  mediaFit = "fit",
-  detections: cleanDetections = [],
-}) {
-  const [imageWidth, imageHeight] = result?.image_size || [];
-  const detections = cleanDetections.filter((detection) => (
-    Array.isArray(detection.box) && detection.box.length === 4
-  ));
-
-  if (!imageWidth || !imageHeight || detections.length === 0) return null;
-
-  return (
-    <svg
-      className="boat-detection-overlay"
-      viewBox={`0 0 ${imageWidth} ${imageHeight}`}
-      preserveAspectRatio={mediaFit === "fill" ? "xMidYMid slice" : "xMidYMid meet"}
-      aria-label="Boat detection labels"
-    >
-      {detections.map((detection, index) => {
-        const [x1, y1, x2, y2] = detection.box;
-        const boxWidth = Math.max(1, x2 - x1);
-        const boxHeight = Math.max(1, y2 - y1);
-        const label = `${detection.label} ${detection.confidence}%`;
-        const labelWidth = Math.min(imageWidth - x1, Math.max(120, label.length * 8));
-        const labelY = Math.max(18, y1);
-        const isLocal = detection.label?.startsWith("Local ");
-        const boxColor = isLocal ? "#00ffb3" : color;
-
-        return (
-          <g key={`${detection.label}-${index}`}>
-            <rect
-              x={x1}
-              y={y1}
-              width={boxWidth}
-              height={boxHeight}
-              fill="none"
-              stroke={boxColor}
-              strokeWidth={Math.max(2, imageWidth / 160)}
-            />
-            <rect
-              x={x1}
-              y={labelY - 18}
-              width={labelWidth}
-              height="18"
-              fill={boxColor}
-              opacity="0.92"
-            />
-            <text
-              x={x1 + 5}
-              y={labelY - 5}
-              fill="#041018"
-              fontSize={Math.max(10, imageWidth / 32)}
-              fontWeight="700"
-              fontFamily="monospace"
-            >
-              {label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
 /* ══════════════════════════════════════════════════════════
    MAIN APP COMPONENT
    ══════════════════════════════════════════════════════════ */
@@ -467,8 +429,12 @@ function AppContent() {
   const { theme } = useTheme();
 
   /* ── Application state ── */
-  const [activeModule, setActiveModule] = useState("hull");
+  const [activeModule, setActiveModule] = useState("home");
   const [file, setFile] = useState(null);
+  const [vesselVideoFile, setVesselVideoFile] = useState(null);
+  const [vesselVideoPreview, setVesselVideoPreview] = useState(null);
+  const [vesselInfoFile, setVesselInfoFile] = useState(null);
+  const [vesselInfoPreview, setVesselInfoPreview] = useState(null);
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -479,7 +445,28 @@ function AppContent() {
   const [seaHistory, setSeaHistory] = useState([]);
   const [seaHistoryLoading, setSeaHistoryLoading] = useState(false);
   const [vesselHistory, setVesselHistory] = useState([]);
+  const [vesselHistoryPage, setVesselHistoryPage] = useState(1);
   const [vesselHistoryLoading, setVesselHistoryLoading] = useState(false);
+  const [vesselHistoryError, setVesselHistoryError] = useState("");
+  const [vesselHistoryStorage, setVesselHistoryStorage] = useState("unknown");
+  const [expandedHistoryImage, setExpandedHistoryImage] = useState(null);
+  const [vesselRecordId, setVesselRecordId] = useState(null);
+  const [shipAnalysisDone, setShipAnalysisDone] = useState(false);
+  const [videoAnalysisDone, setVideoAnalysisDone] = useState(false);
+  const [vesselInfoAnalysisDone, setVesselInfoAnalysisDone] = useState(false);
+  const [vesselDraft, setVesselDraft] = useState({
+    vessel_name: "",
+    port: "",
+    port_country: "",
+    port_country_code: "",
+    port_type: "Foreign",
+    imo_number: "",
+    vessel_classifications: "",
+    notes: "",
+  });
+  const [editingVesselRecordId, setEditingVesselRecordId] = useState(null);
+  const [editingVesselDraft, setEditingVesselDraft] = useState(null);
+  const [vesselDraftDirty, setVesselDraftDirty] = useState(false);
   const [showAccessAdmin, setShowAccessAdmin] = useState(false);
   const [mediaFit, setMediaFit] = useState(() => {
     const saved = window.localStorage.getItem("oceaniq-media-fit");
@@ -488,13 +475,15 @@ function AppContent() {
   const fileInputRef = useRef(null);
   const resultsCardRef = useRef(null);
 
-  const [isVideo, setIsVideo] = useState(false);
-  const [analysedVideoUrl, setAnalysedVideoUrl] = useState(null);
-  const [videoPreviewError, setVideoPreviewError] = useState(false);
-
   useEffect(() => {
     window.localStorage.setItem("oceaniq-media-fit", mediaFit);
   }, [mediaFit]);
+  useEffect(() => () => {
+    if (vesselInfoPreview) URL.revokeObjectURL(vesselInfoPreview);
+  }, [vesselInfoPreview]);
+  useEffect(() => () => {
+    if (vesselVideoPreview) URL.revokeObjectURL(vesselVideoPreview);
+  }, [vesselVideoPreview]);
 useEffect(() => {
     if (!result || loading || window.innerWidth > 1180) return;
     const timer = window.setTimeout(() => {
@@ -516,30 +505,6 @@ useEffect(() => {
     () => filterVesselDetections(result?.results || []),
     [result?.results],
   );
-
-  useEffect(() => {
-    let objectUrl = null;
-    let cancelled = false;
-
-    if (!isVideo || !result?.video_url) return undefined;
-
-    axios.get(`${API_BASE_URL}${result.video_url}`, {
-      responseType: "blob",
-      withCredentials: true,
-    }).then(({ data }) => {
-      if (cancelled) return;
-      objectUrl = URL.createObjectURL(data);
-      setAnalysedVideoUrl(objectUrl);
-    }).catch((error) => {
-      console.error("Failed to load analysed video preview:", error);
-      if (!cancelled) setVideoPreviewError(true);
-    });
-
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [isVideo, result?.video_url]);
 
   /* ── Sea-state history helpers ── */
   const fetchSeaHistory = useCallback(async () => {
@@ -567,39 +532,154 @@ useEffect(() => {
   const fetchVesselHistory = useCallback(async () => {
     try {
       setVesselHistoryLoading(true);
-      const { data } = await axios.get(`${API_BASE_URL}/vessel-detection-history`);
-      setVesselHistory(data.history || []);
+      setVesselHistoryError("");
+      const { data } = await getVesselHistory();
+      const history = data.history || [];
+      setVesselHistory(history);
+      setVesselHistoryPage((page) => Math.min(
+        page,
+        Math.max(1, Math.ceil(history.length / VESSEL_HISTORY_PAGE_SIZE)),
+      ));
+      setVesselHistoryStorage(data.storage || "unknown");
     } catch (error) {
       console.error("Failed to load vessel detection history:", error);
+      const detail = error.response?.data?.detail || error.response?.data?.error;
+      setVesselHistoryError(
+        detail
+          ? `Could not load saved vessel records: ${detail}`
+          : `Could not load saved vessel records: ${error.message}`,
+      );
     } finally {
       setVesselHistoryLoading(false);
     }
   }, []);
 
-  const clearVesselHistory = async () => {
-    if (!canWrite) return;
-    try {
-      await axios.delete(`${API_BASE_URL}/vessel-detection-history`);
-      setVesselHistory([]);
-    } catch (error) {
-      console.error("Failed to clear vessel detection history:", error);
-    }
-  };
-
   /* ── File selection handler ── */
   const processFile = useCallback((f) => {
-    const acceptsVideo = activeModule === "boat" && f?.type.startsWith("video/");
-    if (!canWrite || !f || (!f.type.startsWith("image/") && !acceptsVideo)) return;
+    if (!canWrite || !f) return;
+    const fileExtension = f.name.split(".").pop()?.toLowerCase();
+    const isVideo = activeModule === "boat" && (
+      f.type.startsWith("video/") ||
+      ["mp4", "mov", "avi", "mkv", "webm"].includes(fileExtension)
+    );
+    if (isVideo) {
+      setFile(null);
+      setPreview(null);
+      setVesselVideoFile(f);
+      setVesselVideoPreview(URL.createObjectURL(f));
+      setShipAnalysisDone(false);
+      setVideoAnalysisDone(false);
+      setVesselInfoAnalysisDone(false);
+      setVesselRecordId(null);
+      setVesselDraft({
+        vessel_name: "",
+        port: "",
+        port_country: "",
+        port_country_code: "",
+        imo_number: "",
+        vessel_classifications: "",
+        notes: "",
+      });
+      setResult(null);
+      return;
+    }
+    if (!f.type.startsWith("image/")) return;
     setFile(f);
-    setIsVideo(acceptsVideo);
-    setAnalysedVideoUrl(null);
-    setVideoPreviewError(false);
-    setResult(null);
+    if (activeModule === "boat") {
+      setVesselVideoFile(null);
+      setVesselVideoPreview(null);
+      setVideoAnalysisDone(false);
+      setVesselRecordId(null);
+      setShipAnalysisDone(false);
+      setVesselDraft((current) => ({ ...current, vessel_classifications: "" }));
+      setResult((current) => current?.video_analysis_performed ? null : current ? {
+        ...current,
+        image: null,
+        results: [],
+        count: 0,
+        confidence: 0,
+        vessel_detection_performed: false,
+      } : null);
+    }
+    if (activeModule !== "boat") setResult(null);
     setShowGradcam(false);
     setPreview(URL.createObjectURL(f));
   }, [activeModule, canWrite]);
 
   const handleFileChange = (e) => processFile(e.target.files[0]);
+  const handleVesselInfoFileChange = (e) => {
+    const selectedFile = e.target.files[0];
+    if (!canWrite || !selectedFile?.type.startsWith("image/")) return;
+    setVesselInfoFile(selectedFile);
+    setVesselInfoPreview(URL.createObjectURL(selectedFile));
+    setVesselInfoAnalysisDone(false);
+    setVesselDraft({
+      vessel_name: "",
+      port: "",
+      port_country: "",
+      port_country_code: "",
+      imo_number: "",
+      vessel_classifications: "",
+      notes: "",
+    });
+    setVesselRecordId(null);
+    setResult((current) => current ? {
+      ...current,
+      vessel_info_image: null,
+      vessel_info: null,
+      vessel_info_detections: [],
+      vessel_info_performed: false,
+    } : null);
+  };
+  const clearVesselImage = () => {
+    setFile(null);
+    setPreview(null);
+    setVesselRecordId(null);
+    setShipAnalysisDone(false);
+    setResult((current) => (
+      current?.vessel_info_performed
+        ? {
+            ...current,
+            vessel_detection_performed: false,
+            image: null,
+            results: [],
+            count: 0,
+            confidence: 0,
+          }
+        : null
+    ));
+  };
+  const clearVesselVideo = () => {
+    setVesselVideoFile(null);
+    setVesselVideoPreview(null);
+    setVideoAnalysisDone(false);
+    setShipAnalysisDone(false);
+    setVesselInfoAnalysisDone(false);
+    setVesselRecordId(null);
+    setVesselDraft({
+      vessel_name: "",
+      port: "",
+      port_country: "",
+      port_country_code: "",
+      imo_number: "",
+      vessel_classifications: "",
+      notes: "",
+    });
+    setResult(null);
+  };
+  const clearVesselInfoImage = () => {
+    setVesselInfoFile(null);
+    setVesselInfoPreview(null);
+    setVesselInfoAnalysisDone(false);
+    setVesselRecordId(null);
+    setResult((current) => current ? {
+      ...current,
+      vessel_info_performed: false,
+      vessel_info_image: null,
+      vessel_info: null,
+      vessel_info_detections: [],
+    } : null);
+  };
 
   /* ── Drag and drop handlers ── */
   const handleDrop = (e) => {
@@ -612,10 +692,15 @@ useEffect(() => {
   const switchModule = (id) => {
     setActiveModule(id);
     setFile(null);
-    setIsVideo(false);
+    setVesselVideoFile(null);
+    setVesselVideoPreview(null);
+    setVesselInfoFile(null);
+    setVesselInfoPreview(null);
+    setVesselRecordId(null);
+    setShipAnalysisDone(false);
+    setVideoAnalysisDone(false);
+    setVesselInfoAnalysisDone(false);
     setPreview(null);
-    setAnalysedVideoUrl(null);
-    setVideoPreviewError(false);
     setResult(null);
     setShowGradcam(false);
     setApplyEnhancement(false);
@@ -631,6 +716,7 @@ useEffect(() => {
      All original endpoints are preserved.
      ══════════════════════════════════════════════ */
   const runPrediction = async () => {
+    if (activeModule === "boat") return runVesselAnalysis("ship");
     if (!file || loading || !canWrite) return;
     const form = new FormData();
     form.append("file", file);
@@ -640,10 +726,7 @@ useEffect(() => {
     try {
       setLoading(true);
       setResult(null);
-      const endpoint = activeModule === "boat" && isVideo
-        ? `${API_BASE_URL}/predict-boat-video`
-        : mod.endpoint;
-      const { data } = await axios.post(endpoint, form, {
+      const { data } = await axios.post(mod.endpoint, form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       if (data?.error) {
@@ -652,15 +735,267 @@ useEffect(() => {
         setResult(data);
       }
       if (activeModule === "sea") fetchSeaHistory();
-      if (activeModule === "boat") fetchVesselHistory();
     } catch (err) {
       console.error("Prediction error:", err);
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail
+        || err.response?.data?.error
+        || err.response?.data?.summary;
+
+      const readableDetail = typeof detail === "string" ? detail : null;
+
+      const fallback = !err.response
+        ? "Cannot reach the backend. Check that it is running."
+        : status === 503
+          ? "A required service is unavailable. Check the backend database/authentication connection."
+          : status === 401
+            ? "Your session has expired. Please sign in again."
+            : status === 403
+              ? "The request was denied. Check your permissions and sign-in session."
+              : status === 422
+                ? "The uploaded request failed validation."
+                : "Analysis failed. Check the backend logs.";
+
       setResult({
         __error: true,
-        message: `Connection failed — is the backend running at ${API_BASE_URL}?`,
+        message: `${readableDetail || fallback}${status ? ` (HTTP ${status})` : ""}`,
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const runVesselAnalysis = async (stage) => {
+    const sourceFile = stage === "video"
+      ? vesselVideoFile
+      : stage === "ship" ? file : vesselInfoFile;
+    if (!sourceFile || loading || !canWrite) return;
+    const form = new FormData();
+    form.append(
+      stage === "video" ? "video_file" : stage === "ship" ? "file" : "vessel_info_file",
+      sourceFile,
+    );
+    try {
+      setLoading(true);
+      const { data } = stage === "video"
+        ? await predictVesselVideo(form)
+        : await predictVesselImage(form);
+      if (data?.error) {
+        setResult({ __error: true, message: data.error, details: data.validation });
+        return;
+      }
+      if (stage === "video") {
+        setResult(data);
+        setVideoAnalysisDone(true);
+        setShipAnalysisDone(false);
+        setVesselInfoAnalysisDone(false);
+        setVesselRecordId(null);
+        setVesselDraft((current) => ({
+          ...current,
+          vessel_classifications: [...new Set(data.vessel_classifications || [])].join(" or "),
+        }));
+        return;
+      }
+      setResult((current) => ({
+        ...current,
+        ...data,
+        image: stage === "ship" ? data.image : current?.image || null,
+        results: stage === "ship" ? data.results || [] : current?.results || [],
+        count: stage === "ship" ? data.count || 0 : current?.count || 0,
+        confidence: stage === "ship" ? data.confidence || 0 : current?.confidence || 0,
+        status: stage === "ship" ? data.status : current?.status || data.status,
+        vessel_detection_performed: stage === "ship" || Boolean(current?.vessel_detection_performed),
+        vessel_info_image: stage === "info" ? data.vessel_info_image : current?.vessel_info_image || null,
+        vessel_info: stage === "info" ? data.vessel_info : current?.vessel_info || null,
+        vessel_info_detections: stage === "info"
+          ? data.vessel_info_detections || []
+          : current?.vessel_info_detections || [],
+        vessel_info_performed: stage === "info" || Boolean(current?.vessel_info_performed),
+      }));
+      if (stage === "ship") {
+        setShipAnalysisDone(true);
+        setVesselRecordId(null);
+        setVesselDraft((current) => ({
+          ...current,
+          vessel_classifications: [...new Set(data.vessel_classifications || [])].join(" or "),
+        }));
+      } else {
+        setVesselInfoAnalysisDone(true);
+        setVesselDraft((current) => ({
+          ...current,
+          vessel_name: data.vessel_info?.vessel_name || "",
+          port: data.vessel_info?.port || "",
+          port_country: data.vessel_info?.port_country || "",
+          port_country_code: data.vessel_info?.port_country_code || "",
+          port_type: data.vessel_info?.port_type || "Foreign",
+          imo_number: data.vessel_info?.imo_number || "",
+        }));
+        setVesselRecordId(null);
+      }
+      setVesselDraftDirty(false);
+    } catch (err) {
+      console.error("Vessel analysis error:", err);
+      setResult({ __error: true, message: "Vessel analysis failed. Check the backend and try again." });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitVesselRecord = async () => {
+    if (vesselVideoFile || videoAnalysisDone || (!shipAnalysisDone && !vesselInfoAnalysisDone) || loading || !canWrite) return;
+    const hasVesselInfo = vesselInfoAnalysisDone || Boolean(
+      vesselDraft.vessel_name.trim() ||
+      vesselDraft.port.trim() ||
+      vesselDraft.port_country ||
+      vesselDraft.imo_number.trim()
+    );
+    const record = {
+      ...(result || {}),
+      image: shipAnalysisDone ? file?.name : null,
+      vessel_info_image: vesselInfoAnalysisDone ? vesselInfoFile?.name : null,
+      vessel_detection_performed: shipAnalysisDone,
+      vessel_info_performed: vesselInfoAnalysisDone,
+      vessel_info: hasVesselInfo ? {
+        vessel_name: (vesselDraft.vessel_name || "").trim(),
+        port: (vesselDraft.port || "").trim(),
+        port_country: vesselDraft.port_country || "",
+        port_country_code: vesselDraft.port_country_code || "",
+        port_type: vesselDraft.port_type || "Foreign",
+        port_ocr: result?.vessel_info?.port_ocr || "",
+        port_match_status: result?.vessel_info?.port_match_status || "",
+        port_match_score: result?.vessel_info?.port_match_score ?? null,
+        imo_number: (vesselDraft.imo_number || "").trim(),
+      } : null,
+      notes: (vesselDraft.notes || "").trim(),
+      results: shipAnalysisDone
+        ? result?.results || []
+        : [],
+      vessel_classifications: shipAnalysisDone
+        ? parseVesselClassifications(vesselDraft.vessel_classifications)
+        : [],
+      vessel_kinds: shipAnalysisDone ? result?.vessel_kinds || [] : [],
+      count: shipAnalysisDone ? result?.count || 0 : 0,
+      status: shipAnalysisDone ? result?.status || "Analyzed" : "Vessel information analyzed",
+    };
+    const form = new FormData();
+    form.append("record_json", JSON.stringify(record));
+    if (shipAnalysisDone && file) form.append("ship_image", file);
+    if (vesselInfoAnalysisDone && vesselInfoFile) {
+      form.append("vessel_info_image", vesselInfoFile);
+    }
+    try {
+      setLoading(true);
+      const { data } = await createVesselRecord(form);
+      if (data?.error) {
+        setResult((current) => ({ ...current, __saveError: data.error }));
+        return;
+      }
+      setVesselRecordId(data.record.record_id);
+      setVesselHistoryStorage(data.storage || vesselHistoryStorage);
+      setVesselDraftDirty(false);
+      setResult((current) => ({
+        ...current,
+        record_id: data.record.record_id,
+        cloudinary_images: data.record.cloudinary_images,
+        vessel_info: data.record.vessel_info,
+        __saveSuccess: `Record saved to ${data.storage}.`,
+      }));
+      await fetchVesselHistory();
+    } catch (error) {
+      console.error("Failed to save vessel record:", error);
+      const detail = error.response?.data?.detail || error.response?.data?.error;
+      setResult((current) => ({
+        ...current,
+        __saveError: detail
+          ? `Could not save the vessel record: ${detail}`
+          : `Could not save the vessel record: ${error.message}`,
+      }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateVesselRecord = async (recordId, draft) => {
+    const classifications = parseVesselClassifications(draft.vessel_classifications || "");
+    const updates = {
+      vessel_info: {
+        vessel_name: (draft.vessel_name || "").trim() || null,
+        port: (draft.port || "").trim() || null,
+        port_country: draft.port_country || null,
+        port_country_code: draft.port_country_code || null,
+        port_type: draft.port_type || "Foreign",
+        imo_number: (draft.imo_number || "").trim() || null,
+      },
+      vessel_classifications: classifications,
+      results: draft.results || [],
+      notes: (draft.notes || "").trim(),
+    };
+    const { data } = await updateVesselRecordRequest(recordId, updates);
+    if (data?.error) throw new Error(data.error);
+    return data.record;
+  };
+
+  const saveVesselRecordEdits = async () => {
+    if (!vesselRecordId || loading) return;
+    try {
+      setLoading(true);
+      await updateVesselRecord(vesselRecordId, {
+        ...vesselDraft,
+        results: result?.results || [],
+      });
+      setVesselDraftDirty(false);
+      setResult((current) => ({ ...current, __saveSuccess: "Saved vessel record updated." }));
+      await fetchVesselHistory();
+    } catch (error) {
+      console.error("Failed to update vessel record:", error);
+      setResult((current) => ({ ...current, __saveError: "Could not update the saved vessel record." }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startEditingVesselRecord = (item) => {
+    setEditingVesselRecordId(item.record_id);
+    setEditingVesselDraft({
+      vessel_name: item.vessel_info?.vessel_name || "",
+      port: item.vessel_info?.port || "",
+      port_country: item.vessel_info?.port_country || "",
+      port_country_code: item.vessel_info?.port_country_code || "",
+      port_type: item.vessel_info?.port_type || "Foreign",
+      imo_number: item.vessel_info?.imo_number || "",
+      vessel_classifications: (item.vessel_classifications || []).join(" or "),
+      notes: item.notes || "",
+      results: item.results || [],
+    });
+  };
+
+  const saveEditedVesselHistoryRecord = async () => {
+    try {
+      await updateVesselRecord(editingVesselRecordId, editingVesselDraft);
+      setEditingVesselRecordId(null);
+      setEditingVesselDraft(null);
+      await fetchVesselHistory();
+    } catch (error) {
+      console.error("Failed to update vessel history record:", error);
+      setVesselHistoryError("Could not update the selected vessel record.");
+    }
+  };
+
+  const deleteVesselHistoryRecord = async (recordId) => {
+    if (!canWrite || !window.confirm("Delete this saved vessel record?")) return;
+    try {
+      const { data } = await deleteVesselRecord(recordId);
+      if (data?.error) throw new Error(data.error);
+      setVesselHistory((current) => current.filter((item) => item.record_id !== recordId));
+      const remainingRecords = vesselHistory.length - 1;
+      setVesselHistoryPage((page) => Math.min(
+        page,
+        Math.max(1, Math.ceil(remainingRecords / VESSEL_HISTORY_PAGE_SIZE)),
+      ));
+      if (vesselRecordId === recordId) setVesselRecordId(null);
+    } catch (error) {
+      console.error("Failed to delete vessel history record:", error);
+      setVesselHistoryError(error.response?.data?.error || "Could not delete the vessel record.");
     }
   };
 
@@ -688,7 +1023,7 @@ useEffect(() => {
       const width = (x2 - x1) * scaleX;
       const height = (y2 - y1) * scaleY;
       const boxColor = detection.label === "Local Ship" ? "#00ffb3" : "#a78bfa";
-      const label = `${detection.label} ${detection.confidence}%`;
+      const label = detection.label;
       const labelHeight = Math.max(24, image.naturalWidth / 32);
       const labelWidth = context.measureText(label).width + 16;
       context.strokeStyle = boxColor;
@@ -707,7 +1042,425 @@ useEffect(() => {
   };
 
   /* ── Sea-state PDF report from the Sea-State branch ── */
-const generateSeaStatePDF = () => {
+const generateHullPDF = async () => {
+  if (!result || activeModule !== "hull" || result.__error) {
+    alert("Please complete a hull inspection before generating the report.");
+    return;
+  }
+
+  try {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+    const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
+    const M = 15;
+    const CW = W - M * 2;
+
+    const C = {
+      navy: [15, 35, 60],
+      teal: [0, 150, 145],
+      ink: [35, 48, 65],
+      muted: [105, 119, 135],
+      pale: [241, 246, 249],
+      line: [218, 227, 233],
+      white: [255, 255, 255],
+      green: [35, 139, 100],
+      amber: [219, 150, 35],
+      orange: [221, 105, 45],
+      red: [195, 59, 65]
+    };
+
+    let y = 0;
+    const generatedAt = new Date();
+    const reportId = "OIQ-HULL-" + generatedAt.getTime().toString().slice(-8);
+    const defectName = String(result.prediction || "Unknown")
+      .replace(/[_-]/g, " ")
+      .replace(/\b\w/g, (ch) => ch.toUpperCase());
+
+    const severity = result.severity || {};
+    const severityText = String(severity.level || "Not assessed");
+    const severityLower = severityText.toLowerCase();
+
+    const severityColor =
+      severityLower.includes("critical") ? C.red :
+      severityLower.includes("high") ? C.orange :
+      severityLower.includes("moderate") || severityLower.includes("medium") ? C.amber :
+      severityLower.includes("low") || severityLower.includes("minor") ? C.green :
+      C.muted;
+
+    const confidenceValue = Number(result.confidence);
+    const confidencePct = Number.isFinite(confidenceValue)
+      ? Math.max(0, Math.min(100, confidenceValue <= 1 ? confidenceValue * 100 : confidenceValue))
+      : null;
+
+    const addText = (text, x, top, width, fontSize = 9, color = C.ink, style = "normal") => {
+      doc.setFont("helvetica", style);
+      doc.setFontSize(fontSize);
+      doc.setTextColor(...color);
+      const lines = doc.splitTextToSize(String(text ?? ""), width);
+      doc.text(lines, x, top);
+      return lines.length * fontSize * 0.42 + 1.5;
+    };
+
+    const sectionTitle = (title, top) => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(...C.navy);
+      doc.text(title.toUpperCase(), M, top);
+      doc.setDrawColor(...C.teal);
+      doc.setLineWidth(0.8);
+      doc.line(M, top + 2.5, M + 16, top + 2.5);
+      return top + 8;
+    };
+
+    const ensureSpace = (needed) => {
+      if (y + needed > H - 18) {
+        doc.addPage();
+        y = 18;
+      }
+    };
+
+    const imageToDataURL = (url) => new Promise((resolve) => {
+      if (!url) {
+        resolve(null);
+        return;
+      }
+
+      const image = new Image();
+      image.crossOrigin = "anonymous";
+
+      image.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = image.naturalWidth || image.width;
+          canvas.height = image.naturalHeight || image.height;
+          const context = canvas.getContext("2d");
+
+          if (!context) {
+            resolve(null);
+            return;
+          }
+
+          context.drawImage(image, 0, 0);
+          resolve(canvas.toDataURL("image/jpeg", 0.88));
+        } catch {
+          resolve(null);
+        }
+      };
+
+      image.onerror = () => resolve(null);
+      image.src = url;
+    });
+
+    const addImagePanel = async (title, url, x, top, width, height) => {
+      doc.setFillColor(...C.pale);
+      doc.setDrawColor(...C.line);
+      doc.roundedRect(x, top, width, height, 2, 2, "FD");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(...C.navy);
+      doc.text(title.toUpperCase(), x + 3, top + 6);
+
+      const data = await imageToDataURL(url);
+
+      if (data) {
+        try {
+          const props = doc.getImageProperties(data);
+          const maxW = width - 6;
+          const maxH = height - 12;
+          const scale = Math.min(maxW / props.width, maxH / props.height);
+          const imgW = props.width * scale;
+          const imgH = props.height * scale;
+          doc.addImage(
+            data,
+            "JPEG",
+            x + (width - imgW) / 2,
+            top + 9 + (maxH - imgH) / 2,
+            imgW,
+            imgH
+          );
+        } catch {
+          addText("Image could not be embedded.", x + 3, top + 18, width - 6, 7, C.muted);
+        }
+      } else {
+        addText("Image unavailable.", x + 3, top + 18, width - 6, 7, C.muted);
+      }
+    };
+
+    const addFooter = () => {
+      const pages = doc.getNumberOfPages();
+
+      for (let page = 1; page <= pages; page += 1) {
+        doc.setPage(page);
+        doc.setDrawColor(...C.line);
+        doc.setLineWidth(0.3);
+        doc.line(M, H - 12, W - M, H - 12);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(...C.muted);
+        doc.text("OCEANIQ  |  UNDERWATER HULL CONDITION ASSESSMENT", M, H - 7);
+        doc.text("Report " + reportId, W - M, H - 7, { align: "right" });
+        doc.text("Page " + page + " of " + pages, W - M, H - 3, { align: "right" });
+      }
+    };
+
+    // REPORT HEADER
+    doc.setFillColor(...C.navy);
+    doc.rect(0, 0, W, 39, "F");
+    doc.setFillColor(...C.teal);
+    doc.rect(0, 39, W, 2, "F");
+
+    doc.setTextColor(...C.white);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(19);
+    doc.text("OCEANIQ", M, 14);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text("UNDERWATER HULL INSPECTION REPORT", M, 22);
+
+    doc.setFontSize(7.5);
+    doc.setTextColor(195, 215, 226);
+    doc.text("AI-ASSISTED CONDITION ASSESSMENT", M, 29);
+    doc.text("REPORT ID  " + reportId, W - M, 14, { align: "right" });
+    doc.text(
+      generatedAt.toLocaleString(),
+      W - M,
+      22,
+      { align: "right" }
+    );
+
+    y = 51;
+
+    // INSPECTION SUMMARY
+    y = sectionTitle("01  |  Inspection summary", y);
+
+    doc.setFillColor(...C.pale);
+    doc.setDrawColor(...C.line);
+    doc.roundedRect(M, y, CW, 34, 3, 3, "FD");
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...C.muted);
+    doc.text("DETECTED CONDITION", M + 5, y + 7);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(...C.navy);
+    doc.text(doc.splitTextToSize(defectName, CW * 0.53), M + 5, y + 15);
+
+    const dividerX = M + CW * 0.61;
+    doc.setDrawColor(...C.line);
+    doc.line(dividerX, y + 5, dividerX, y + 29);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...C.muted);
+    doc.text("MODEL CONFIDENCE", dividerX + 5, y + 7);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(...C.teal);
+    doc.text(confidencePct === null ? "N/A" : confidencePct.toFixed(1) + "%", dividerX + 5, y + 16);
+
+    doc.setFillColor(...C.line);
+    doc.roundedRect(dividerX + 5, y + 21, CW * 0.29, 3, 1, 1, "F");
+
+    if (confidencePct !== null) {
+      doc.setFillColor(...C.teal);
+      doc.roundedRect(
+        dividerX + 5,
+        y + 21,
+        Math.max(0.5, CW * 0.29 * confidencePct / 100),
+        3,
+        1,
+        1,
+        "F"
+      );
+    }
+
+    y += 40;
+
+    // SEVERITY AND RECOMMENDATION
+    ensureSpace(35);
+    y = sectionTitle("02  |  Severity and maintenance guidance", y);
+
+    doc.setFillColor(...severityColor);
+    doc.roundedRect(M, y, 32, 10, 2, 2, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...C.white);
+    doc.text(severityText.toUpperCase().slice(0, 18), M + 16, y + 6.5, { align: "center" });
+
+    let detailsY = y + 5;
+    if (severity.method) {
+      detailsY += addText("Assessment method: " + severity.method, M + 37, detailsY, CW - 37, 8, C.muted);
+    }
+    if (severity.reason) {
+      detailsY += addText("Reason: " + severity.reason, M + 37, detailsY, CW - 37, 8, C.ink);
+    }
+
+    y = Math.max(y + 15, detailsY + 2);
+
+    const recommendation = severity.recommended_action || result.recommendation || "Arrange a qualified inspection and confirm the appropriate maintenance action.";
+    const recommendationHeight = Math.max(22, doc.splitTextToSize(String(recommendation), CW - 12).length * 4.2 + 12);
+
+    ensureSpace(recommendationHeight + 8);
+    doc.setFillColor(235, 248, 246);
+    doc.setDrawColor(190, 226, 220);
+    doc.roundedRect(M, y, CW, recommendationHeight, 2, 2, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...C.teal);
+    doc.text("RECOMMENDED ACTION", M + 5, y + 7);
+
+    addText(recommendation, M + 5, y + 13, CW - 10, 8, C.ink);
+    y += recommendationHeight + 5;
+
+    if (result.warning || severity.notice) {
+      const warning = result.warning || severity.notice;
+      const warningHeight = Math.max(14, doc.splitTextToSize(String(warning), CW - 12).length * 4 + 8);
+      ensureSpace(warningHeight + 4);
+
+      doc.setFillColor(255, 247, 232);
+      doc.setDrawColor(241, 218, 174);
+      doc.roundedRect(M, y, CW, warningHeight, 2, 2, "FD");
+      addText("NOTE: " + warning, M + 5, y + 7, CW - 10, 7.5, [125, 83, 25]);
+      y += warningHeight + 5;
+    }
+
+    // CLASS PROBABILITIES
+    const probabilities = result.probabilities && typeof result.probabilities === "object"
+      ? Object.entries(result.probabilities)
+      : [];
+
+    if (probabilities.length) {
+      ensureSpace(18 + probabilities.length * 9);
+      y = sectionTitle("03  |  Class probability distribution", y);
+
+      probabilities.sort((a, b) => Number(b[1]) - Number(a[1]));
+
+      const labelW = 43;
+      const valueW = 17;
+      const barX = M + labelW;
+      const barW = CW - labelW - valueW - 3;
+
+      for (const [label, rawValue] of probabilities) {
+        const raw = Number(rawValue);
+        const pct = Number.isFinite(raw)
+          ? Math.max(0, Math.min(100, raw <= 1 ? raw * 100 : raw))
+          : 0;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C.ink);
+        doc.text(
+          String(label).replace(/[_-]/g, " ").slice(0, 22),
+          M,
+          y + 3
+        );
+
+        doc.setFillColor(...C.pale);
+        doc.roundedRect(barX, y, barW, 4, 1, 1, "F");
+
+        if (pct > 0) {
+          doc.setFillColor(...(String(label).toLowerCase() === String(result.prediction).toLowerCase() ? C.teal : [133, 165, 180]));
+          doc.roundedRect(barX, y, Math.max(0.5, barW * pct / 100), 4, 1, 1, "F");
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C.navy);
+        doc.text(pct.toFixed(1) + "%", W - M, y + 3, { align: "right" });
+
+        y += 8;
+      }
+
+      y += 3;
+    }
+
+    // IMAGE EVIDENCE
+    ensureSpace(63);
+    y = sectionTitle("04  |  Visual evidence", y);
+
+    const gap = 5;
+    const panelW = (CW - gap) / 2;
+    const panelH = 49;
+
+    await addImagePanel("Uploaded inspection image", preview, M, y, panelW, panelH);
+    await addImagePanel(
+      "Grad-CAM model attention",
+      result.gradcam || null,
+      M + panelW + gap,
+      y,
+      panelW,
+      panelH
+    );
+
+    y += panelH + 5;
+
+    if (result.gradcam) {
+      ensureSpace(16);
+      addText(
+        "Grad-CAM visualisation indicates image regions that influenced the model prediction. It is an explanatory aid, not a verified defect boundary.",
+        M,
+        y,
+        CW,
+        7.5,
+        C.muted
+      );
+      y += 11;
+    }
+
+    // INSPECTION NOTES
+    ensureSpace(45);
+    y = sectionTitle("05  |  Inspector notes", y);
+
+    doc.setDrawColor(...C.line);
+    doc.setFillColor(...C.white);
+    doc.roundedRect(M, y, CW, 29, 2, 2, "FD");
+
+    for (let i = 1; i <= 3; i += 1) {
+      doc.setDrawColor(...C.line);
+      doc.line(M + 5, y + i * 7, W - M - 5, y + i * 7);
+    }
+
+    y += 35;
+
+    const fieldW = (CW - 10) / 2;
+    addText("Inspector: ______________________________", M, y, fieldW, 7.5, C.muted);
+    addText("Inspection date: __________________", M + fieldW + 10, y, fieldW, 7.5, C.muted);
+    y += 9;
+    addText("Signature: ______________________________________________", M, y, CW, 7.5, C.muted);
+
+    // LIMITATIONS
+    y += 12;
+    ensureSpace(24);
+    doc.setFillColor(...C.pale);
+    doc.roundedRect(M, y, CW, 19, 2, 2, "F");
+    addText(
+      "IMPORTANT LIMITATION: This report contains AI-generated predictions and should support, not replace, assessment by a qualified marine inspector. Confirm the defect, severity, and maintenance decision through appropriate inspection.",
+      M + 4,
+      y + 6,
+      CW - 8,
+      7,
+      C.muted
+    );
+
+    addFooter();
+    doc.save("OceanIQ_Hull_Report_" + defectName.replace(/[^a-z0-9]+/gi, "_") + ".pdf");
+  } catch (error) {
+    console.error("Hull PDF generation failed:", error);
+    alert("Unable to generate the Hull PDF report. Please check the browser console.");
+  }
+};
+
+/* Sea-state PDF report from the Sea-State branch */
+  const generateSeaStatePDF = () => {
   if (!result || activeModule !== "sea" || result.__error) return;
 
   const doc = new jsPDF();
@@ -1858,7 +2611,62 @@ const generateSeaStatePDF = () => {
                 })}
               </div>
             )}
+            {/* HULL ASSESSMENT DETAILS */}
+            {activeModule === "hull" && (
+              <div style={{ marginTop: 18, display: "grid", gap: 14 }}>
 
+                {/* Hull Validation */}
+                <div className="a-card" style={{ padding: 16 }}>
+                  <p className="a-card-label">HULL VALIDATION</p>
+                  <p>
+                    {result.hull_validation
+                      ? (result.hull_validation.is_hull === true
+                          ? "Hull surface validated"
+                          : result.hull_validation.is_hull === false
+                            ? "Hull surface not validated"
+                            : "Validation status unavailable")
+                      : "Validation status unavailable"}
+                  </p>
+                </div>
+
+                {/* Severity */}
+                <div className="a-card" style={{ padding: 16 }}>
+                  <p className="a-card-label">SEVERITY ASSESSMENT</p>
+                  <h3 style={{ color: "#67d9f5", marginTop: 8 }}>
+                    {result.severity?.level || "Not assessed"}
+                  </h3>
+                  <p>{result.severity?.reason || "Preliminary assessment based on the detected hull condition."}</p>
+                </div>
+
+                {/* Maintenance Priority */}
+                <div className="a-card" style={{ padding: 16 }}>
+                  <p className="a-card-label">MAINTENANCE GUIDANCE</p>
+                  <p>
+                    {result.severity?.recommended_action ||
+                      result.recommendation ||
+                      "Qualified inspection recommended."}
+                  </p>
+                </div>
+
+                {/* System Warnings */}
+                <div
+                  className="a-card"
+                  style={{
+                    padding: 16,
+                    border: "1px solid #95682e"
+                  }}
+                >
+                  <p style={{ color: "#ffc078", fontWeight: 700 }}>
+                    SYSTEM WARNINGS
+                  </p>
+                  <p>
+                    {result.warning ||
+                      result.severity?.notice ||
+                      "AI-generated findings are preliminary. Confirm the defect and maintenance decision through qualified inspection."}
+                  </p>
+                </div>
+              </div>
+            )}
             {/* GRAD-CAM */}
             {result.gradcam && (
               <div className="gradcam-block">
@@ -1888,7 +2696,7 @@ const generateSeaStatePDF = () => {
                     </p>
 
                     <img
-                      src={`data:image/jpeg;base64,${result.gradcam}`}
+                      src={result.gradcam}
                       alt="Grad-CAM"
                     />
 
@@ -2034,97 +2842,32 @@ const generateSeaStatePDF = () => {
           </div>
         )}
 
+        {/* Show Vessel Detection results when the boat module is active. */}
         {/* ══════════════════════════
             BOAT DETECTION results
             ══════════════════════════ */}
-        {activeModule === "boat" && (
-          <div className="result-body">
-            {isVideo ? (
-              result.video_detections?.length > 0 ? (
-                <>
-                  <div className="boat-analysis-summary" style={{ borderColor: mod.colorMid }}>
-                    <div><span>VIDEO FRAMES</span><strong>{result.frame_count}</strong></div>
-                    <div><span>OBJECT TYPES</span><strong>{result.video_detections.length}</strong></div>
-                    <div><span>STATUS</span><strong>{result.status}</strong></div>
-                  </div>
-                  <div className="vessel-list">
-                    {result.video_detections.map((det, index) => (
-                      <div key={`${det.label}-${index}`} className="vessel-item" style={{ borderColor: mod.colorMid }}>
-                        <div className="vessel-index" style={{ background: mod.colorDim, color: mod.color }}>
-                          <Crosshair size={12} /> {index + 1}
-                        </div>
-                        <span className="vessel-label">{det.label}</span>
-                        <span className="vessel-conf" style={{ color: mod.color }}>{det.frames_detected} frames</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="empty-result">
-                  <Ship size={38} opacity={0.2} />
-                  <p>No vessels detected in this video.</p>
-                </div>
-              )
-            ) : cleanVesselDetections.length > 0 ? (
-              <>
-                <div className="boat-analysis-summary" style={{ borderColor: mod.colorMid }}>
-                  <div>
-                    <span>VESSEL</span>
-                    <strong>{cleanVesselDetections.filter((item) => item.detection_type !== "flag" && item.label?.trim().toLowerCase() !== "sl flag").length}</strong>
-                  </div>
-                  <div>
-                    <span>SL FLAG</span>
-                    <strong>{cleanVesselDetections.filter((item) => item.detection_type === "flag" || item.label?.trim().toLowerCase() === "sl flag").length}</strong>
-                  </div>
-                  <div>
-                    <span>TOTAL OBJECTS</span>
-                    <strong>{cleanVesselDetections.length}</strong>
-                  </div>
-                </div>
-                <div className="result-primary-row">
-                  <div className="result-pred-block" style={{ borderColor: mod.colorMid }}>
-                    <p className="rpb-eye">VESSELS DETECTED</p>
-                    <p className="rpb-val" style={{ color: mod.color }}>{cleanVesselDetections.filter((item) => item.detection_type !== "flag" && item.label?.trim().toLowerCase() !== "sl flag").length}</p>
-                    <p className="rpb-sub">Objects identified in frame</p>
-                  </div>
-                  <div className="vessel-count-badge"
-                    style={{ color: mod.color, borderColor: mod.colorMid, background: mod.colorDim }}>
-                    <Ship size={26} strokeWidth={1.5} />
-                    <span>{cleanVesselDetections.filter((item) => item.detection_type !== "flag" && item.label?.trim().toLowerCase() !== "sl flag").length} FOUND</span>
-                  </div>
-                </div>
-
-                <div className="vessel-list">
-                  {cleanVesselDetections.map((det, i) => (
-                    <div key={i} className="vessel-item" style={{ borderColor: mod.colorMid }}>
-                      <div className="vessel-index"
-                        style={{ background: mod.colorDim, color: mod.color }}>
-                        <Crosshair size={12} /> {i + 1}
-                      </div>
-                      <span className="vessel-label">{det.label}</span>
-                      <span className="vessel-conf" style={{ color: mod.color }}>{det.confidence}%</span>
-                    </div>
-                  ))}
-                </div>
-              
-                <div className="boat-result-details" style={{ borderColor: mod.colorMid }}>
-                  <DataRow label="ESTIMATED SIZE" value={result.estimated_size || "Medium Vessel"} color={mod.color} />
-                  <DataRow label="STATUS" value={result.status || "Detected"} color="#00ffb3" />
-                </div>
-
-                <button className="boat-download-btn" onClick={downloadBoatAnalysis}>
-                  <Download size={14} /> DOWNLOAD ANNOTATED IMAGE
-                </button>
-              </>
-            ) : (
-              <div className="empty-result">
-                <Ship size={38} opacity={0.2} />
-                <p>No vessels detected in this frame.</p>
-              </div>
-            )}
-
-          </div>
-        )}
+        <VesselDetectionResults
+          activeModule={activeModule}
+          result={result}
+          mod={mod}
+          vesselVideoFile={vesselVideoFile}
+          vesselInfoPreview={vesselInfoPreview}
+          cleanVesselDetections={cleanVesselDetections}
+          preview={preview}
+          downloadBoatAnalysis={downloadBoatAnalysis}
+          vesselDraft={vesselDraft}
+          setVesselDraft={setVesselDraft}
+          setVesselDraftDirty={setVesselDraftDirty}
+          shipAnalysisDone={shipAnalysisDone}
+          vesselInfoAnalysisDone={vesselInfoAnalysisDone}
+          vesselRecordId={vesselRecordId}
+          vesselDraftDirty={vesselDraftDirty}
+          loading={loading}
+          canWrite={canWrite}
+          saveVesselRecordEdits={saveVesselRecordEdits}
+          submitVesselRecord={submitVesselRecord}
+          DataRow={DataRow}
+        />
 
         {/* ══════════════════════════
             RADAR results
@@ -2298,6 +3041,17 @@ const generateSeaStatePDF = () => {
      FULL APPLICATION RENDER
      Layout: sidebar (fixed left) + main content (scrollable)
      ════════════════════════════════════════════════════════ */
+  const vesselHistoryPageCount = Math.max(
+    1,
+    Math.ceil(vesselHistory.length / VESSEL_HISTORY_PAGE_SIZE),
+  );
+  const currentVesselHistoryPage = Math.min(vesselHistoryPage, vesselHistoryPageCount);
+  const vesselHistoryStartIndex = (currentVesselHistoryPage - 1) * VESSEL_HISTORY_PAGE_SIZE;
+  const currentVesselHistoryRecords = vesselHistory.slice(
+    vesselHistoryStartIndex,
+    vesselHistoryStartIndex + VESSEL_HISTORY_PAGE_SIZE,
+  );
+
   return (
     <div className="app-shell">
 
@@ -2321,23 +3075,21 @@ const generateSeaStatePDF = () => {
 
         {/* OceanIQ brand mark */}
         <div className="sidebar-brand">
-          <div className="sb-logo">
-            <Anchor size={19} strokeWidth={2.5} />
+          <div className="sb-logo" aria-hidden="true">
+            <Anchor size={22} strokeWidth={2.5} />
           </div>
           <div>
             <p className="sb-name">OceanIQ</p>
-            <p className="sb-tagline">Marine Intelligence</p>
+            <p className="sb-tagline">Marine intelligence</p>
           </div>
         </div>
 
-        {/* Research project identifier */}
-        <div className="sidebar-proj-tag">
-          <Globe size={10} />
+        <div className="sidebar-proj-tag" aria-label="Research group">
+          <Globe size={12} aria-hidden="true" />
           R26-IT-003
         </div>
 
-        {/* Module navigation — clicking switches the active AI module */}
-        <p className="sidebar-sec-label">AI MODULES</p>
+        <p className="sidebar-sec-label">Workspace</p>
         <nav className="module-nav">
           {Object.values(MODULES).map((m) => {
             const Icon = m.icon;
@@ -2379,16 +3131,14 @@ const generateSeaStatePDF = () => {
 
         <div style={{ flex: 1 }} />
 
-        {/* System health status indicators */}
         <div className="sidebar-status-block">
-          <p className="sidebar-sec-label">SYSTEM STATUS</p>
+          <p className="sidebar-sec-label">Account status</p>
           <StatusRows />
         </div>
 
-        {/* Live clock + version info */}
         <div className="sidebar-footer">
           <SystemClock />
-          <span className="sidebar-ver">v2.0 · R26-IT-003</span>
+          <span className="sidebar-ver">R26-IT-003</span>
         </div>
       </aside>
 
@@ -2438,7 +3188,7 @@ const generateSeaStatePDF = () => {
               }}
             >
               <Download size={14} />
-              DOWNLOAD RADAR REPORT
+              Download radar report
             </button>
           )}
 
@@ -2462,8 +3212,8 @@ const generateSeaStatePDF = () => {
                 }
               }}
             >
-              <Download size={14} />
-              DOWNLOAD SIMULATION REPORT
+              <Download size={14} aria-hidden="true" />
+              Download simulation report
             </button>
           )}
 
@@ -2487,21 +3237,23 @@ const generateSeaStatePDF = () => {
                 }
               }}
             >
-              <Download size={14} />
-              DOWNLOAD DATABASE REPORT
+              <Download size={14} aria-hidden="true" />
+              Download database report
             </button>
           )}
 
 <ThemeToggle compact />
-            <div className="badge-live"><span className="live-dot" />LIVE</div>
-            <div className="badge-secure"><Shield size={12} />SECURE</div>
+            <div className="badge-live" title="Authenticated application session">
+              <span className="live-dot" aria-hidden="true" />
+              Signed in
+            </div>
             <div className={`badge-access ${canWrite ? "badge-access--write" : "badge-access--read"}`}>
-              <LockKeyhole size={12} />
-              {isAdmin ? "ADMIN" : accessLevel === "read_write" ? "READ / WRITE" : "READ ONLY"}
+              <LockKeyhole size={12} aria-hidden="true" />
+              {isAdmin ? "Admin" : accessLevel === "read_write" ? "Read / write" : "Read only"}
             </div>
             {isAdmin && (
-              <button className="admin-access-btn" onClick={() => setShowAccessAdmin(true)}>
-                <UserRoundCog size={13} /> ACCESS ADMIN
+              <button type="button" className="admin-access-btn" onClick={() => setShowAccessAdmin(true)}>
+                <UserRoundCog size={13} aria-hidden="true" /> Access admin
               </button>
             )}
             <span className="cb-user">{user?.username}</span>
@@ -2509,13 +3261,14 @@ const generateSeaStatePDF = () => {
           </div>
         </header>
 
-        {/* Module description strip — shows what the selected model does */}
-        <div className="desc-strip" style={{ borderColor: mod.colorMid }}>
-          <Cpu size={13} style={{ color: mod.color, flexShrink: 0, marginTop: 1 }} />
-          <p>{mod.description}</p>
-        </div>
+        {activeModule !== "home" && (
+          <div className="desc-strip">
+            <Cpu size={14} style={{ color: mod.color, flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+            <p>{mod.description}</p>
+          </div>
+        )}
 
-        {!canWrite && (
+        {!canWrite && activeModule !== "home" && (
           <div className="readonly-banner">
             <LockKeyhole size={14} />
             <div>
@@ -2525,12 +3278,16 @@ const generateSeaStatePDF = () => {
           </div>
         )}
 
-        {activeModule === "database" ? (
+        {activeModule === "home" ? (
+          <HomePage onNavigate={switchModule} />
+        ) : activeModule === "database" ? (
           <DatabaseViewer />
         ) : activeModule === "simulation" ? (
           <div className={!canWrite ? "simulation-readonly" : ""}>
             <LiveSimulation mediaFit={mediaFit} onMediaFitChange={setMediaFit} />
           </div>
+        ) : activeModule === "chat" ? (
+          <ChatAssistant />
         ) : (
           <>
         {/* ── 3-panel analysis grid ── */}
@@ -2539,13 +3296,13 @@ const generateSeaStatePDF = () => {
           {/* ─── PANEL 1: Upload ─── */}
           <section className="a-card upload-card">
             <div className="a-card-header">
-              <span className="a-card-label"><Upload size={11} /> INPUT IMAGE</span>
+              <span className="a-card-label"><Upload size={11} /> {activeModule === "boat" ? "VESSEL IMAGE OR VIDEO" : "INPUT IMAGE"}</span>
               <span className="a-card-tag" style={{ color: mod.color }}>{mod.statusLabel}</span>
             </div>
 
             {/* Drag-and-drop zone */}
             <label
-              className={`drop-zone ${dragOver ? "dz--over" : ""} ${file ? "dz--filled" : ""} ${!canWrite ? "dz--readonly" : ""}`}
+              className={`drop-zone ${dragOver ? "dz--over" : ""} ${(file || vesselVideoFile) ? "dz--filled" : ""} ${!canWrite ? "dz--readonly" : ""}`}
               style={dragOver ? { borderColor: mod.color } : {}}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
@@ -2554,13 +3311,19 @@ const generateSeaStatePDF = () => {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept={activeModule === "boat" ? "image/*,video/*" : "image/*"}
+                accept={activeModule === "boat" ? "image/*,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm" : "image/*"}
                 onClick={(e) => { e.currentTarget.value = ""; }}
                 onChange={handleFileChange}
                 disabled={!canWrite}
               />
 
-              {file ? (
+              {vesselVideoFile ? (
+                <div className="dz-loaded">
+                  <Film size={24} style={{ color: mod.color }} />
+                  <p className="dz-fname">{vesselVideoFile.name}</p>
+                  <p className="dz-change">Video is analyzed temporarily and is never saved to the database</p>
+                </div>
+              ) : file ? (
                 <div className="dz-loaded">
                   <CheckCircle2 size={24} style={{ color: mod.color }} />
                   <p className="dz-fname">{file.name}</p>
@@ -2571,13 +3334,33 @@ const generateSeaStatePDF = () => {
                   <div className="dz-upload-icon">
                     <Upload size={24} style={{ color: mod.color }} />
                   </div>
-                  <p className="dz-main">Drop {activeModule === "boat" ? "image or video" : "image"} here</p>
+                  <p className="dz-main">Drop {activeModule === "boat" ? "vessel image or video" : "image"} here</p>
                   <p className="dz-sub">or click to browse</p>
-                  <p className="dz-fmt">{activeModule === "boat" ? "PNG · JPG · MP4 · MOV · AVI" : "PNG · JPG · JPEG · BMP"}</p>
+                  <p className="dz-fmt">{activeModule === "boat" ? "IMAGE · MP4 · MOV · AVI · MKV · WEBM · MAX 100 MB / 5 MIN" : "PNG · JPG · JPEG · BMP · WEBP"}</p>
                 </div>
               )}
             </label>
-
+            {activeModule === "boat" && (
+              <VesselDetectionPage
+                color={mod.color}
+                file={file}
+                vesselVideoFile={vesselVideoFile}
+                loading={loading}
+                canWrite={canWrite}
+                shipAnalysisDone={shipAnalysisDone}
+                videoAnalysisDone={videoAnalysisDone}
+                vesselInfoFile={vesselInfoFile}
+                vesselInfoPreview={vesselInfoPreview}
+                vesselInfoAnalysisDone={vesselInfoAnalysisDone}
+                onAnalyzeVessel={() => runVesselAnalysis("ship")}
+                onAnalyzeVideo={() => runVesselAnalysis("video")}
+                onAnalyzeInfo={() => runVesselAnalysis("info")}
+                onInfoFileChange={handleVesselInfoFileChange}
+                onRemoveImage={clearVesselImage}
+                onRemoveVideo={clearVesselVideo}
+                onRemoveInfoImage={clearVesselInfoImage}
+              />
+            )}
             {activeModule === "sea" && (
               <label className="sea-enhancement-toggle">
                 <input
@@ -2590,7 +3373,7 @@ const generateSeaStatePDF = () => {
               </label>
             )}
 
-            <button
+            {activeModule !== "boat" && <button
               className="run-btn"
               style={{ "--mc": mod.color, "--mc-dim": mod.colorDim }}
               onClick={runPrediction}
@@ -2599,7 +3382,7 @@ const generateSeaStatePDF = () => {
               {loading
                 ? <><Loader size={15} className="spin" /> ANALYZING…</>
                 : <><Zap size={15} /> RUN ANALYSIS</>}
-            </button>
+            </button>}
           </section>
 
           {/* ─── PANEL 2: Preview ─── */}
@@ -2627,33 +3410,24 @@ const generateSeaStatePDF = () => {
             </div>
 
             <div className="preview-area">
-              {preview ? (
+              {activeModule === "boat" && vesselVideoPreview ? (
+                <video
+                  src={vesselVideoPreview}
+                  className={`preview-img preview-img--${mediaFit}`}
+                  controls
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
+              ) : preview ? (
                 <div className="preview-img-wrap">
-  {isVideo ? (
-                    <>
-                      <video
-                        src={analysedVideoUrl || preview}
-                        className={`preview-img preview-img--${mediaFit}`}
-                        controls
-                        muted
-                        playsInline
-                        onError={() => setVideoPreviewError(true)}
-                      />
-                      {videoPreviewError && (
-                        <p className="video-preview-error">
-                          Analysed video cannot be played in this browser.
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <img
-                      src={preview}
-                      alt="Preview"
-                      className={`preview-img preview-img--${mediaFit}`}
-                    />
-                  )}
+                  <img
+                    src={preview}
+                    alt="Preview"
+                    className={`preview-img preview-img--${mediaFit}`}
+                  />
 
-                  {activeModule === "boat" && !loading && !isVideo && (
+                  {activeModule === "boat" && !loading && (
                     <BoatDetectionOverlay
                       result={result}
                       color={mod.color}
@@ -2720,42 +3494,52 @@ const generateSeaStatePDF = () => {
 
             {/* Actual prediction results */}
             {renderResults()}
-          </section>
-        </div>
-        {activeModule === "boat" && (
-          <section className="a-card vessel-history-panel">
-            <div className="sea-history-header">
-              <p className="sea-feature-title">VESSEL DETECTION HISTORY</p>
-              <div className="sea-history-actions">
-                <button onClick={fetchVesselHistory} disabled={vesselHistoryLoading}>
-                  {vesselHistoryLoading ? "LOADING…" : "REFRESH"}
-                </button>
-                <button className="danger" onClick={clearVesselHistory} disabled={!canWrite}>CLEAR</button>
-              </div>
-            </div>
-            {vesselHistory.length === 0 ? (
-              <p className="sea-history-empty">No vessel detection history available.</p>
-            ) : (
-              <div className="sea-history-grid">
-                {vesselHistory.slice(0, 6).map((item, index) => (
-                  <div className="sea-history-card" key={`${item.timestamp}-${item.filename}-${index}`}>
-                    <span>{item.timestamp} · {item.mode}</span>
-                    <strong>{item.vessel_classifications?.length
-                      ? item.vessel_classifications.join(" · ")
-                      : item.vessel_origin || item.results?.find((detection) => detection.detection_type !== "flag")?.label || "Unknown"}</strong>
-                    <p>{item.filename}</p>
-                    <p>{item.status} · {item.count || 0} detected · {item.frame_count ? `${item.frame_count} frames` : "single image"}</p>
-                    <p>{item.estimated_size || "Size unavailable"} · {item.source || "Unknown source"}</p>
-                  </div>
-                ))}
-              </div>
+
+            {/* Hull PDF Download */}
+            {activeModule === "hull" && result && !result.__error && (
+              <button
+                type="button"
+                className="module-report-btn"
+                onClick={generateHullPDF}
+                style={{ marginTop: "16px", width: "100%" }}
+              >
+                DOWNLOAD HULL PDF REPORT
+              </button>
             )}
           </section>
-        )}
+        </div>
+        {/* Show saved Vessel Detection records in the shared dashboard. */}
+        <VesselDetectionHistory
+          activeModule={activeModule}
+          vesselHistoryStorage={vesselHistoryStorage}
+          fetchVesselHistory={fetchVesselHistory}
+          vesselHistoryLoading={vesselHistoryLoading}
+          vesselHistoryError={vesselHistoryError}
+          vesselHistory={vesselHistory}
+          canWrite={canWrite}
+          startEditingVesselRecord={startEditingVesselRecord}
+          deleteVesselHistoryRecord={deleteVesselHistoryRecord}
+          currentVesselHistoryRecords={currentVesselHistoryRecords}
+          vesselHistoryStartIndex={vesselHistoryStartIndex}
+          editingVesselRecordId={editingVesselRecordId}
+          editingVesselDraft={editingVesselDraft}
+          setEditingVesselDraft={setEditingVesselDraft}
+          saveEditedVesselHistoryRecord={saveEditedVesselHistoryRecord}
+          setEditingVesselRecordId={setEditingVesselRecordId}
+          vesselHistoryPageCount={vesselHistoryPageCount}
+          setVesselHistoryPage={setVesselHistoryPage}
+          currentVesselHistoryPage={currentVesselHistoryPage}
+          setExpandedHistoryImage={setExpandedHistoryImage}
+        />
           </>
         )}
 
-        {activeModule !== "simulation" && file && canWrite && (
+        <VesselImageLightbox
+          image={expandedHistoryImage}
+          onClose={() => setExpandedHistoryImage(null)}
+        />
+
+        {activeModule !== "home" && activeModule !== "simulation" && activeModule !== "chat" && activeModule !== "database" && activeModule !== "boat" && file && canWrite && (
           <div className="mobile-action-dock">
             <button type="button" className="mobile-change-btn" onClick={() => fileInputRef.current?.click()}>
               <Upload size={14} /> CHANGE
@@ -2793,3 +3577,4 @@ function App() {
 }
 
 export default App;
+

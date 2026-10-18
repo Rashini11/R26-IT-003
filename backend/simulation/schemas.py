@@ -56,7 +56,9 @@ class CollisionRiskRequest(BaseModel):
 
 
 class SimulationStartRequest(BaseModel):
-    sar_source: Literal["ship", "bird", "unknown", "all"] = "ship"
+    # Live Simulation currently ships only ship1..ship10 radar folders.
+    # bird/unknown dataset roots are not present in ml/live_simulation_radar.
+    sar_source: Literal["ship", "all"] = "ship"
     mode: Literal["constructed", "actual"] = "constructed"
     real_interval_seconds: float = Field(default=10.0, ge=0.2, le=60.0)
     simulated_interval_seconds: int = Field(default=10, ge=10, le=60)

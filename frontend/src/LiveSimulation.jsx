@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import axios from "axios";
 import {
   Activity,
@@ -16,6 +16,8 @@ import {
   Square,
 } from "lucide-react";
 import MediaFitToggle from "./components/MediaFitToggle";
+import useSimulationReplay from "./simulation/useSimulationReplay";
+import TrajectoryPanel from "./simulation/TrajectoryPanel";
 
 /*
  * SINGLE BACKEND CONFIGURATION
@@ -490,14 +492,11 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
   const [sarSource, setSarSource] =
     useState("ship");
 
-  const [latest, setLatest] =
-    useState(null);
-
-  const [status, setStatus] =
-    useState(null);
-
-  const [history, setHistory] =
-    useState([]);
+  const replay = useSimulationReplay(API_BASE_URL);
+  const latest = replay.event;
+  const status = replay.status;
+  const history = replay.events.filter((event) => event.frame_number <= (latest?.frame_number ?? 0)).slice(-12);
+  const [failedImage, setFailedImage] = useState(null);
 
   const [busy, setBusy] =
     useState(false);
@@ -505,84 +504,8 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
   const [error, setError] =
     useState("");
 
-  const running = Boolean(
-    status?.running || latest?.running
-  );
-
-  const refresh = useCallback(
-    async () => {
-      const [
-        statusResponse,
-        latestResponse,
-        historyResponse,
-      ] = await Promise.allSettled([
-        axios.get(
-          `${API_BASE_URL}/simulation/status`,
-          { timeout: 4000 }
-        ),
-
-        axios.get(
-          `${API_BASE_URL}/simulation/latest`,
-          { timeout: 4000 }
-        ),
-
-        axios.get(
-          `${API_BASE_URL}/simulation/history?limit=12`,
-          { timeout: 4000 }
-        ),
-      ]);
-
-      if (
-        statusResponse.status
-        === "rejected"
-      ) {
-        setError(
-          statusResponse.reason?.message
-          || "Integrated backend unavailable."
-        );
-        return;
-      }
-
-      setStatus(
-        statusResponse.value.data
-      );
-
-      if (
-        latestResponse.status
-        === "fulfilled"
-      ) {
-        setLatest(
-          latestResponse.value.data
-        );
-      }
-
-      if (
-        historyResponse.status
-        === "fulfilled"
-      ) {
-        setHistory(
-          historyResponse.value.data.results
-          || []
-        );
-      }
-
-      setError("");
-    },
-    []
-  );
-
-  useEffect(() => {
-    refresh();
-
-    const timer = setInterval(
-      refresh,
-      2000
-    );
-
-    return () => clearInterval(
-      timer
-    );
-  }, [refresh]);
+  const running = Boolean(status?.running || status?.starting);
+  const refresh = replay.refresh;
 
   const start = async () => {
     setBusy(true);
@@ -647,20 +570,9 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
     }
   };
 
-  const imageUrl = useMemo(
-    () => {
-      if (!latest?.frame_number) {
-        return null;
-      }
-
-      return (
-        `${API_BASE_URL}`
-        + "/simulation/current-image"
-        + `?frame=${latest.frame_number}`
-      );
-    },
-    [latest?.frame_number]
-  );
+  const imageUrl = latest?.recording_id
+    ? `${API_BASE_URL}/simulation/replay/image?recording_id=${encodeURIComponent(latest.recording_id)}&frame_number=${latest.frame_number}`
+    : latest?.frame_number ? `${API_BASE_URL}/simulation/current-image?frame=${latest.frame_number}` : null;
 
   const encounter =
     latest?.encounter;
@@ -716,15 +628,7 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
             </option>
 
             <option value="all">
-              All classes
-            </option>
-
-            <option value="bird">
-              Bird images
-            </option>
-
-            <option value="unknown">
-              Unknown images
+              All available ship folders
             </option>
           </select>
         </label>
@@ -813,8 +717,8 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
           }
         >
           {running
-            ? "STREAMING"
-            : "STOPPED"}
+            ? "BACKEND STREAMING"
+            : "BACKEND STOPPED"}
         </span>
 
         <span>
@@ -852,6 +756,8 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
 
       </section>
 
+      <TrajectoryPanel replay={replay} />
+
       <div className="sim-top-grid">
 
         <section className="sim-radar-card">
@@ -859,7 +765,7 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
           <div className="sim-panel-head">
             <span>
               <RadioTower size={14} />
-              LIVE SAR FRAME
+              {replay.following ? "LATEST RECORDED SAR FRAME" : "SELECTED RECORDED SAR FRAME"}
             </span>
 
             <span className="sim-mono">
@@ -872,18 +778,18 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
           </div>
 
           <div className="sim-image-stage">
-            {imageUrl ? (
+            {imageUrl && failedImage !== imageUrl ? (
               <img
                 src={imageUrl}
-                alt="Current simulated SAR frame"
+                alt="Radar image for selected simulation event"
+                onError={() => setFailedImage(imageUrl)}
                 className={`sim-image sim-image--${mediaFit}`}
               />
             ) : (
               <div>
                 <RadioTower size={42} />
                 <p>
-                  Start the simulation
-                  to receive SAR frames
+                  {failedImage === imageUrl && imageUrl ? "Recorded radar asset unavailable for this event." : "Start the simulation to receive SAR frames"}
                 </p>
               </div>
             )}
@@ -1114,7 +1020,7 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
         <div className="sim-panel-head">
           <span>
             <Navigation size={14} />
-            RECENT EVENTS
+            EVENTS UP TO SELECTED TIME
           </span>
 
           <span>
@@ -1143,6 +1049,10 @@ export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
                 .reverse()
                 .map((event) => (
                   <tr
+                    tabIndex={0}
+                    aria-selected={event.frame_number === latest?.frame_number}
+                    onClick={() => replay.seek(replay.events.findIndex((e) => e.frame_number === event.frame_number))}
+                    onKeyDown={(key) => { if (key.key === "Enter" || key.key === " ") { key.preventDefault(); replay.seek(replay.events.findIndex((e) => e.frame_number === event.frame_number)); } }}
                     key={
                       `${event.simulation_id}`
                       + `-${event.frame_number}`

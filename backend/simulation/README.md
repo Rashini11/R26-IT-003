@@ -20,35 +20,30 @@ The collision-risk level is an analytical decision-support result based on confi
 
 ## Required local assets
 
-These large files were intentionally not included in the code ZIP:
+Runtime assets used by the integrated backend (`backend.main:app`):
 
 ```text
-ml/dataset_v2_balanced/test/{bird,ship,unknown}/...
+ml/live_simulation_radar/ship1 ... ship10/...
 ml/external_datasets/ais_motion/processed_AIS_dataset.csv
-ml/models/final/yolo11_medium_best.pt
-ml/models/final/deepercnn_best.pth
-ml/models/final/ais_motion_gru_best.pth
+ml/models/final/ais_motion_gru_under90_deploy.pth
 ml/ais_motion/sequences_5min/metadata.json
 ml/ais_motion/sequences_5min/test_motion_sequences.npz
+ml/models/v6_runs/radar_unknown3/radar_unknown3_best.pth
 ```
 
-The GRU checkpoint contains output-target normalisation. `metadata.json` contains the seven input-feature means and standard deviations created from the training split only. The evaluation script restricts scenario selection to MMSIs found in `test_motion_sequences.npz`.
+Older experiment checkpoints may remain on disk but are not the active Live Simulation paths.
+
+The GRU deploy checkpoint contains output-target normalisation. `metadata.json` contains the seven input-feature means and standard deviations created from the training split only.
 
 ## Run
 
-Terminal 1 — existing classification backend:
+Simulation routes are mounted on the single OceanIQ app. Do not start a second uvicorn process on port 8001.
 
 ```bash
-./venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-Terminal 2 — combined simulation backend:
-
-```bash
-./venv/bin/python -m uvicorn backend.simulation.app:app --host 127.0.0.1 --port 8001
-```
-
-Terminal 3 — frontend:
+Frontend:
 
 ```bash
 cd frontend
@@ -58,7 +53,7 @@ npm run dev
 ## Start a fast constructed encounter
 
 ```bash
-curl -X POST http://127.0.0.1:8001/simulation/start \
+curl -X POST http://127.0.0.1:8000/simulation/start \
   -H 'Content-Type: application/json' \
   -d '{
     "sar_source": "ship",
@@ -74,16 +69,18 @@ curl -X POST http://127.0.0.1:8001/simulation/start \
 Status and live output:
 
 ```bash
-curl http://127.0.0.1:8001/simulation/status
-curl http://127.0.0.1:8001/simulation/latest
-curl http://127.0.0.1:8001/simulation/history?limit=10
+curl http://127.0.0.1:8000/simulation/status
+curl http://127.0.0.1:8000/simulation/latest
+curl http://127.0.0.1:8000/simulation/history?limit=10
 ```
 
 Stop:
 
 ```bash
-curl -X POST http://127.0.0.1:8001/simulation/stop
+curl -X POST http://127.0.0.1:8000/simulation/stop
 ```
+
+Note: these simulation endpoints require an authenticated OceanIQ session cookie (and CSRF for POST).
 
 A 1-second real interval advances simulation time by 10 seconds per frame. Use a 10-second real interval during the final viva to demonstrate six SAR frames per minute.
 
@@ -111,8 +108,8 @@ The controller searches for two MMSIs appearing in nearby spatial bins at overla
 
 ## Security controls
 
-- Both backends are intended to bind to `127.0.0.1` only.
-- CORS is restricted to the local Vite frontend.
+- The integrated backend is intended to bind to `127.0.0.1` for local research use.
+- CORS is restricted to the local Vite frontend (plus optional `FRONTEND_ORIGIN`).
 - The API does not accept arbitrary filesystem paths.
 - SAR input is restricted to the configured test dataset root.
 - The GRU checkpoint path is fixed and loaded with `weights_only=True`.
@@ -129,7 +126,7 @@ Run without real-time waiting:
   --scenarios 4
 ```
 
-Keep the classification backend running unless using `--skip-classification`.
+Keep the integrated OceanIQ backend running unless using `--skip-classification`.
 
 Generated outputs:
 

@@ -37,7 +37,7 @@ VAL_DIR = os.path.join(
 MODEL_PATH = os.path.join(
     BASE_DIR,
     "model",
-    "hull_validator.keras",
+    "hull_validator_hardneg.keras",
 )
 
 # IMPORTANT:
@@ -215,13 +215,23 @@ def create_validator_dataset(source_dir, destination_dir):
                     destination_file,
                 )
 
+# --------------------------------------------------------
+# Add hard-negative images to TRAINING only
+# --------------------------------------------------------
+
 
 # ============================================================
-# BUILD VALIDATOR DATASET
+# BUILD A FRESH VALIDATOR DATASET
 # ============================================================
 
-print("Preparing validator dataset...")
+print("Preparing a fresh validator dataset...")
 
+# Remove old generated validator datasets only
+for temp_dir in (TEMP_TRAIN_DIR, TEMP_VAL_DIR):
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir)
+
+# Create fresh training and validation folders
 create_validator_dataset(
     TRAIN_DIR,
     TEMP_TRAIN_DIR,
@@ -230,6 +240,56 @@ create_validator_dataset(
 create_validator_dataset(
     VAL_DIR,
     TEMP_VAL_DIR,
+)
+
+# ------------------------------------------------------------
+# Add hard-negative images to TRAINING only
+# ------------------------------------------------------------
+
+HARD_NEGATIVE_DIR = os.path.join(
+    BASE_DIR,
+    "data",
+    "raw",
+    "images",
+    "non_hull_hard",
+)
+
+if not os.path.isdir(HARD_NEGATIVE_DIR):
+    raise FileNotFoundError(
+        f"Missing hard-negative directory: {HARD_NEGATIVE_DIR}"
+    )
+
+hard_negative_train_dir = os.path.join(
+    TEMP_TRAIN_DIR,
+    "non_hull",
+)
+
+hard_negative_count = 0
+
+for filename in os.listdir(HARD_NEGATIVE_DIR):
+    source_file = os.path.join(
+        HARD_NEGATIVE_DIR,
+        filename,
+    )
+
+    if not os.path.isfile(source_file):
+        continue
+
+    destination_file = os.path.join(
+        hard_negative_train_dir,
+        f"hard_{filename}",
+    )
+
+    shutil.copy2(
+        source_file,
+        destination_file,
+    )
+
+    hard_negative_count += 1
+
+print(
+    f"Hard-negative images included in training: "
+    f"{hard_negative_count}"
 )
 
 print("Validator dataset ready.")

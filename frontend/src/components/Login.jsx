@@ -94,26 +94,26 @@ function Login() {
         </div>
 
         <div className="auth-intro-copy">
-          <span className="auth-kicker">R26-IT-003 · SECURE ACCESS GATEWAY</span>
+          <span className="auth-kicker">R26-IT-003 · Research access</span>
           <h2>Maritime intelligence.<br />Controlled access.</h2>
           <p>
-            Authenticate to access AI-assisted hull inspection, sea-state analysis,
-            vessel detection, radar classification and live maritime simulation.
+            Sign in to use hull condition, sea-state, vessel detection, radar classification,
+            the guided chat assistant and live simulation.
           </p>
         </div>
 
         <div className="auth-system-list">
-          <div><Waves size={15} /><span>SEA STATE</span><b>ONLINE</b></div>
-          <div><Radar size={15} /><span>RADAR INTELLIGENCE</span><b>ONLINE</b></div>
-          <div><ShieldCheck size={15} /><span>ACCESS CONTROL</span><b>ENFORCED</b></div>
+          <div><Waves size={15} aria-hidden="true" /><span>Sea state analysis</span><b>Available after sign-in</b></div>
+          <div><Radar size={15} aria-hidden="true" /><span>Radar & vessel modules</span><b>Available after sign-in</b></div>
+          <div><ShieldCheck size={15} aria-hidden="true" /><span>Access control</span><b>Session required</b></div>
         </div>
       </section>
 
       <section className="auth-panel-wrap">
         <div className="auth-panel">
           <div className="auth-panel-topline">
-            <LockKeyhole size={15} />
-            <span>SECURE OPERATOR PORTAL</span>
+            <LockKeyhole size={15} aria-hidden="true" />
+            <span>OceanIQ portal</span>
           </div>
 
           <div className="auth-tabs">
@@ -122,23 +122,23 @@ function Login() {
               className={mode === "login" ? "active" : ""}
               onClick={() => switchMode("login")}
             >
-              SIGN IN
+              Sign in
             </button>
             <button
               type="button"
               className={mode === "signup" ? "active" : ""}
               onClick={() => switchMode("signup")}
             >
-              CREATE PROFILE
+              Create profile
             </button>
           </div>
 
           <div className="auth-panel-heading">
-            <span>{mode === "login" ? "AUTHENTICATE" : "REQUEST ACCESS"}</span>
-            <h3>{mode === "login" ? "Operator Login" : "Create OceanIQ Profile"}</h3>
+            <span>{mode === "login" ? "Authenticate" : "Request access"}</span>
+            <h3>{mode === "login" ? "Sign in" : "Create OceanIQ profile"}</h3>
             <p>
               {mode === "login"
-                ? "Enter your secured OceanIQ account credentials."
+                ? "Enter your OceanIQ account credentials."
                 : "New profiles require administrator approval before dashboard access is granted."}
             </p>
           </div>
@@ -218,29 +218,28 @@ function Login() {
             )}
 
             {passwordMismatch && (
-              <p className="auth-message auth-message--error">Passwords do not match.</p>
+              <p className="auth-error">Passwords do not match.</p>
             )}
-            {error && <p className="auth-message auth-message--error">{error}</p>}
-            {success && <p className="auth-message auth-message--success">{success}</p>}
+            {error && <p className="auth-error">{error}</p>}
+            {success && <p className="auth-success">{success}</p>}
 
             <button
-              className="auth-primary"
+              className="auth-submit"
               type="submit"
               disabled={submitting || passwordMismatch}
             >
-              {mode === "login" ? <LockKeyhole size={15} /> : <UserPlus size={15} />}
+              {mode === "login" ? <LockKeyhole size={15} aria-hidden="true" /> : <UserPlus size={15} aria-hidden="true" />}
               {submitting
-                ? mode === "login" ? "AUTHENTICATING..." : "CREATING PROFILE..."
-                : mode === "login" ? "SIGN IN TO OCEANIQ" : "CREATE PROFILE"}
+                ? mode === "login" ? "Signing in…" : "Creating profile…"
+                : mode === "login" ? "Sign in to OceanIQ" : "Create profile"}
             </button>
           </form>
 
           {mode === "signup" && (
-            <div className="auth-approval-note">
-              <ShieldCheck size={14} />
+            <div className="auth-hint">
               <p>
                 Registration does not automatically grant operational access. An administrator
-                assigns either <strong>READ ONLY</strong> or <strong>READ / WRITE</strong> access.
+                assigns either <strong>read only</strong> or <strong>read / write</strong> access.
               </p>
             </div>
           )}
