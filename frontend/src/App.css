@@ -853,12 +853,20 @@ p { margin: 0; }
 }
 
 .vessel-ocr-chip {
+  display: grid;
+  gap: 3px;
   padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   color: var(--text-300);
   font-size: 10px;
   overflow-wrap: anywhere;
+}
+.vessel-ocr-chip span + span,
+.vessel-confidence-score {
+  color: var(--text-400);
+  font-family: var(--font-mono);
+  font-size: 9px;
 }
 
 .vessel-info-upload-loaded img {
@@ -1679,6 +1687,7 @@ p { margin: 0; }
   transition: background 0.2s;
 }
 .vessel-item:hover { background: rgba(255, 255, 255, 0.04); }
+.vessel-confidence-score { margin-left: auto; white-space: nowrap; }
 
 .vessel-index {
   display: flex;
