@@ -1,5 +1,10 @@
+import { useMemo } from "react";
 import { Crosshair, Download, Film, Ship } from "lucide-react";
 import PortCountryLookup from "./PortCountryLookup";
+import {
+  formatVesselConfidence,
+  getVesselDisplayConfidence,
+} from "../utils/vesselDetectionUtils";
 
 // Display image and video analysis results and the editable vessel record.
 export default function VesselDetectionResults({
@@ -24,6 +29,14 @@ export default function VesselDetectionResults({
   submitVesselRecord,
   DataRow,
 }) {
+  const vesselInfoDetections = useMemo(
+    () => (result.vessel_info_detections || []).map((item) => ({
+      ...item,
+      displayConfidence: getVesselDisplayConfidence(item.confidence),
+    })),
+    [result.vessel_info_detections],
+  );
+
   return (
     <>
         {activeModule === "boat" && (
@@ -113,12 +126,17 @@ export default function VesselDetectionResults({
                     </div>
                   ))}
                 </div>
-                {result.vessel_info_detections?.length > 0 && (
+                {vesselInfoDetections.length > 0 && (
                   <div className="vessel-ocr-detections">
-                    {result.vessel_info_detections.map((item, index) => (
-                      <span className="vessel-ocr-chip" key={`${item.field}-${index}`}>
-                        {item.field.replaceAll("_", " ")} · {item.matched_text || item.text || "Text not read"}
-                      </span>
+                    {vesselInfoDetections.map((item, index) => (
+                      <div className="vessel-ocr-chip" key={`${item.field}-${index}`}>
+                        <span>
+                          {item.field.replaceAll("_", " ")} · {item.matched_text || item.text || "Text not read"}
+                        </span>
+                        {formatVesselConfidence(item.displayConfidence) && (
+                          <span>Detector confidence: {formatVesselConfidence(item.displayConfidence)}</span>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}
@@ -179,6 +197,9 @@ export default function VesselDetectionResults({
                       </div>
                       <span className="vessel-kind-chip">{det.vessel_kind || "Vessel"}</span>
                       <span className="vessel-label">{det.label}</span>
+                      <span className="vessel-confidence-score">
+                        Confidence: {formatVesselConfidence(det.confidence) || "N/A"}
+                      </span>
                     </div>
                   ))}
                 </div>

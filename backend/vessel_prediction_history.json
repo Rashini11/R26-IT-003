@@ -19,7 +19,8 @@
         ],
         "detection_type": "ship"
       }
-    ]
+    ],
+    "record_id": "f3d3bdd8a61f4df1b393525c700578c2"
   },
   {
     "module": "vessel",
@@ -41,7 +42,8 @@
         ],
         "detection_type": "ship"
       }
-    ]
+    ],
+    "record_id": "41e9e2a1d172438c849e6e1c1e580c42"
   },
   {
     "module": "vessel",
@@ -63,7 +65,8 @@
         ],
         "detection_type": "ship"
       }
-    ]
+    ],
+    "record_id": "1d9b50de499143d384ff97abb4a4f50e"
   },
   {
     "module": "vessel",
@@ -85,7 +88,8 @@
         ],
         "detection_type": "ship"
       }
-    ]
+    ],
+    "record_id": "6e8ed68e854a4e6991055001a24295ba"
   },
   {
     "module": "vessel",
@@ -107,6 +111,7 @@
         ],
         "detection_type": "ship"
       }
-    ]
+    ],
+    "record_id": "a0554e96e1df46148f41cc2c0cbee6da"
   }
 ]
