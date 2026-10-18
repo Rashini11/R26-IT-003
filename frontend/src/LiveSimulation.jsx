@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import axios from "axios";
 import {
   Activity,
@@ -15,6 +15,9 @@ import {
   Ship,
   Square,
 } from "lucide-react";
+import MediaFitToggle from "./components/MediaFitToggle";
+import useSimulationReplay from "./simulation/useSimulationReplay";
+import TrajectoryPanel from "./simulation/TrajectoryPanel";
 
 /*
  * SINGLE BACKEND CONFIGURATION
@@ -28,7 +31,7 @@ import {
  *   VITE_API_BASE_URL=http://server:8000
  */
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? "" : "http://localhost:8000");
 
 function fmt(value, digits = 2, fallback = "—") {
   if (
@@ -47,6 +50,311 @@ function riskClass(level) {
     level || "unknown"
   ).toLowerCase()}`;
 }
+
+function EnvironmentPanel({ environment }) {
+  const atmospheric =
+    environment?.atmospheric;
+
+  const marine =
+    environment?.marine;
+
+  if (!environment) {
+    return (
+      <section className="sim-panel">
+        <div className="sim-panel-head">
+          <span>
+            ENVIRONMENTAL CONDITIONS
+          </span>
+        </div>
+
+        <div className="sim-waiting">
+          Waiting for environmental data…
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="sim-panel">
+
+      <div className="sim-panel-head">
+        <span>
+          ENVIRONMENTAL CONDITIONS
+        </span>
+
+        <span className="sim-mono">
+          {environment.provider || "—"}
+        </span>
+      </div>
+
+
+      <div className="sim-history-row">
+        <span>
+          Encounter position
+        </span>
+
+        <strong>
+          {fmt(
+            environment.latitude,
+            4
+          )}
+          {", "}
+          {fmt(
+            environment.longitude,
+            4
+          )}
+        </strong>
+      </div>
+
+
+      <div className="sim-panel-head">
+        <span>
+          ATMOSPHERIC
+        </span>
+      </div>
+
+
+      {atmospheric?.available ? (
+
+        <div className="sim-kpi-grid">
+
+          <div>
+            <small>TEMPERATURE</small>
+            <strong>
+              {fmt(
+                atmospheric.temperature_c,
+                1
+              )} °C
+            </strong>
+          </div>
+
+          <div>
+            <small>HUMIDITY</small>
+            <strong>
+              {fmt(
+                atmospheric
+                  .relative_humidity_percent,
+                0
+              )}%
+            </strong>
+          </div>
+
+          <div>
+            <small>WIND</small>
+            <strong>
+              {fmt(
+                atmospheric.wind_speed_knots,
+                2
+              )} kn
+            </strong>
+          </div>
+
+          <div>
+            <small>WIND DIRECTION</small>
+            <strong>
+              {fmt(
+                atmospheric
+                  .wind_direction_degrees,
+                0
+              )}°
+            </strong>
+          </div>
+
+          <div>
+            <small>WIND GUST</small>
+            <strong>
+              {fmt(
+                atmospheric.wind_gust_knots,
+                2
+              )} kn
+            </strong>
+          </div>
+
+          <div>
+            <small>VISIBILITY</small>
+            <strong>
+              {fmt(
+                atmospheric.visibility_km,
+                1
+              )} km
+            </strong>
+          </div>
+
+          <div>
+            <small>PRESSURE</small>
+            <strong>
+              {fmt(
+                atmospheric.pressure_msl_hpa,
+                1
+              )} hPa
+            </strong>
+          </div>
+
+          <div>
+            <small>RAIN</small>
+            <strong>
+              {fmt(
+                atmospheric.rain_mm,
+                2
+              )} mm
+            </strong>
+          </div>
+
+          <div>
+            <small>CLOUD COVER</small>
+            <strong>
+              {fmt(
+                atmospheric.cloud_cover_percent,
+                0
+              )}%
+            </strong>
+          </div>
+
+        </div>
+
+      ) : (
+
+        <div className="sim-waiting">
+          Atmospheric data unavailable.
+        </div>
+
+      )}
+
+
+      <div
+        className="sim-panel-head"
+        style={{
+          marginTop: "18px",
+        }}
+      >
+        <span>
+          MARINE
+        </span>
+      </div>
+
+
+      {marine?.available ? (
+
+        <div className="sim-kpi-grid">
+
+          <div>
+            <small>WAVE HEIGHT</small>
+            <strong>
+              {fmt(
+                marine.wave_height_m,
+                2
+              )} m
+            </strong>
+          </div>
+
+          <div>
+            <small>WAVE DIRECTION</small>
+            <strong>
+              {fmt(
+                marine
+                  .wave_direction_degrees,
+                0
+              )}°
+            </strong>
+          </div>
+
+          <div>
+            <small>WAVE PERIOD</small>
+            <strong>
+              {fmt(
+                marine.wave_period_seconds,
+                1
+              )} s
+            </strong>
+          </div>
+
+          <div>
+            <small>SWELL HEIGHT</small>
+            <strong>
+              {fmt(
+                marine.swell_height_m,
+                2
+              )} m
+            </strong>
+          </div>
+
+          <div>
+            <small>SWELL DIRECTION</small>
+            <strong>
+              {fmt(
+                marine
+                  .swell_direction_degrees,
+                0
+              )}°
+            </strong>
+          </div>
+
+          <div>
+            <small>SWELL PERIOD</small>
+            <strong>
+              {fmt(
+                marine.swell_period_seconds,
+                1
+              )} s
+            </strong>
+          </div>
+
+          <div>
+            <small>SEA TEMPERATURE</small>
+            <strong>
+              {fmt(
+                marine
+                  .sea_surface_temperature_c,
+                1
+              )} °C
+            </strong>
+          </div>
+
+          <div>
+            <small>CURRENT SPEED</small>
+            <strong>
+              {fmt(
+                marine
+                  .ocean_current_speed_knots,
+                2
+              )} kn
+            </strong>
+          </div>
+
+          <div>
+            <small>CURRENT DIRECTION</small>
+            <strong>
+              {fmt(
+                marine
+                  .ocean_current_direction_degrees,
+                0
+              )}°
+            </strong>
+          </div>
+
+        </div>
+
+      ) : (
+
+        <div className="sim-waiting">
+          {marine?.reason ||
+            "Marine data unavailable at this location."}
+        </div>
+
+      )}
+
+
+      <p className="sim-notice">
+        Environmental observations are
+        contextual decision-support data.
+        They are not inputs to RadarTargetCNN
+        or the GRU motion model.
+      </p>
+
+    </section>
+  );
+}
+
 
 function VesselPanel({ label, vessel }) {
   const state = vessel?.current_state;
@@ -174,7 +482,7 @@ function VesselPanel({ label, vessel }) {
   );
 }
 
-export default function LiveSimulation() {
+export default function LiveSimulation({ mediaFit = "fit", onMediaFitChange }) {
   const [mode, setMode] =
     useState("constructed");
 
@@ -184,14 +492,11 @@ export default function LiveSimulation() {
   const [sarSource, setSarSource] =
     useState("ship");
 
-  const [latest, setLatest] =
-    useState(null);
-
-  const [status, setStatus] =
-    useState(null);
-
-  const [history, setHistory] =
-    useState([]);
+  const replay = useSimulationReplay(API_BASE_URL);
+  const latest = replay.event;
+  const status = replay.status;
+  const history = replay.events.filter((event) => event.frame_number <= (latest?.frame_number ?? 0)).slice(-12);
+  const [failedImage, setFailedImage] = useState(null);
 
   const [busy, setBusy] =
     useState(false);
@@ -199,84 +504,8 @@ export default function LiveSimulation() {
   const [error, setError] =
     useState("");
 
-  const running = Boolean(
-    status?.running || latest?.running
-  );
-
-  const refresh = useCallback(
-    async () => {
-      const [
-        statusResponse,
-        latestResponse,
-        historyResponse,
-      ] = await Promise.allSettled([
-        axios.get(
-          `${API_BASE_URL}/simulation/status`,
-          { timeout: 4000 }
-        ),
-
-        axios.get(
-          `${API_BASE_URL}/simulation/latest`,
-          { timeout: 4000 }
-        ),
-
-        axios.get(
-          `${API_BASE_URL}/simulation/history?limit=12`,
-          { timeout: 4000 }
-        ),
-      ]);
-
-      if (
-        statusResponse.status
-        === "rejected"
-      ) {
-        setError(
-          statusResponse.reason?.message
-          || "Integrated backend unavailable."
-        );
-        return;
-      }
-
-      setStatus(
-        statusResponse.value.data
-      );
-
-      if (
-        latestResponse.status
-        === "fulfilled"
-      ) {
-        setLatest(
-          latestResponse.value.data
-        );
-      }
-
-      if (
-        historyResponse.status
-        === "fulfilled"
-      ) {
-        setHistory(
-          historyResponse.value.data.results
-          || []
-        );
-      }
-
-      setError("");
-    },
-    []
-  );
-
-  useEffect(() => {
-    refresh();
-
-    const timer = setInterval(
-      refresh,
-      2000
-    );
-
-    return () => clearInterval(
-      timer
-    );
-  }, [refresh]);
+  const running = Boolean(status?.running || status?.starting);
+  const refresh = replay.refresh;
 
   const start = async () => {
     setBusy(true);
@@ -341,20 +570,9 @@ export default function LiveSimulation() {
     }
   };
 
-  const imageUrl = useMemo(
-    () => {
-      if (!latest?.frame_number) {
-        return null;
-      }
-
-      return (
-        `${API_BASE_URL}`
-        + "/simulation/current-image"
-        + `?frame=${latest.frame_number}`
-      );
-    },
-    [latest?.frame_number]
-  );
+  const imageUrl = latest?.recording_id
+    ? `${API_BASE_URL}/simulation/replay/image?recording_id=${encodeURIComponent(latest.recording_id)}&frame_number=${latest.frame_number}`
+    : latest?.frame_number ? `${API_BASE_URL}/simulation/current-image?frame=${latest.frame_number}` : null;
 
   const encounter =
     latest?.encounter;
@@ -410,15 +628,7 @@ export default function LiveSimulation() {
             </option>
 
             <option value="all">
-              All classes
-            </option>
-
-            <option value="bird">
-              Bird images
-            </option>
-
-            <option value="unknown">
-              Unknown images
+              All available ship folders
             </option>
           </select>
         </label>
@@ -507,8 +717,8 @@ export default function LiveSimulation() {
           }
         >
           {running
-            ? "STREAMING"
-            : "STOPPED"}
+            ? "BACKEND STREAMING"
+            : "BACKEND STOPPED"}
         </span>
 
         <span>
@@ -546,6 +756,8 @@ export default function LiveSimulation() {
 
       </section>
 
+      <TrajectoryPanel replay={replay} />
+
       <div className="sim-top-grid">
 
         <section className="sim-radar-card">
@@ -553,7 +765,7 @@ export default function LiveSimulation() {
           <div className="sim-panel-head">
             <span>
               <RadioTower size={14} />
-              LIVE SAR FRAME
+              {replay.following ? "LATEST RECORDED SAR FRAME" : "SELECTED RECORDED SAR FRAME"}
             </span>
 
             <span className="sim-mono">
@@ -561,18 +773,23 @@ export default function LiveSimulation() {
             </span>
           </div>
 
+          <div className="sim-media-toolbar">
+            <MediaFitToggle mode={mediaFit} onChange={onMediaFitChange} compact />
+          </div>
+
           <div className="sim-image-stage">
-            {imageUrl ? (
+            {imageUrl && failedImage !== imageUrl ? (
               <img
                 src={imageUrl}
-                alt="Current simulated SAR frame"
+                alt="Radar image for selected simulation event"
+                onError={() => setFailedImage(imageUrl)}
+                className={`sim-image sim-image--${mediaFit}`}
               />
             ) : (
               <div>
                 <RadioTower size={42} />
                 <p>
-                  Start the simulation
-                  to receive SAR frames
+                  {failedImage === imageUrl && imageUrl ? "Recorded radar asset unavailable for this event." : "Start the simulation to receive SAR frames"}
                 </p>
               </div>
             )}
@@ -606,16 +823,17 @@ export default function LiveSimulation() {
               <div className="sim-kpi-grid">
 
                 <div>
-                  <small>YOLO</small>
+                  <small>
+                    BIRD PROBABILITY
+                  </small>
+
                   <strong>
-                    {
-                      sar?.yolo_prediction
-                      || "—"
-                    }
+                    BIRD
                   </strong>
+
                   <em>
                     {fmt(
-                      sar?.yolo_confidence,
+                      sar?.bird_probability,
                       2
                     )}
                     %
@@ -624,19 +842,31 @@ export default function LiveSimulation() {
 
                 <div>
                   <small>
-                    DEEPER CNN
+                    SHIP PROBABILITY
                   </small>
 
                   <strong>
-                    {
-                      sar?.cnn_prediction
-                      || "—"
-                    }
+                    SHIP
                   </strong>
 
                   <em>
                     {fmt(
-                      sar?.cnn_confidence,
+                      sar?.ship_probability,
+                      2
+                    )}
+                    %
+                  </em>
+                </div>
+                <div>
+                  <small>
+                    UNKNOWN PROBABILITY
+                  </small>
+                  <strong>
+                    UNKNOWN
+                  </strong>
+                  <em>
+                    {fmt(
+                      sar?.unknown_probability,
                       2
                     )}
                     %
@@ -647,9 +877,10 @@ export default function LiveSimulation() {
 
               <div className="sim-decision">
 
-                {sar?.classification
-                  && sar.classification
-                  !== "uncertain"
+                {(
+                  sar?.classification === "bird"
+                  || sar?.classification === "ship"
+                )
                   ? (
                     <CheckCircle2
                       size={15}
@@ -761,6 +992,10 @@ export default function LiveSimulation() {
 
       </div>
 
+      <EnvironmentPanel
+        environment={latest?.environment}
+      />
+
       <div className="sim-vessel-grid">
 
         <VesselPanel
@@ -779,12 +1014,13 @@ export default function LiveSimulation() {
 
       </div>
 
+
       <section className="sim-panel sim-events">
 
         <div className="sim-panel-head">
           <span>
             <Navigation size={14} />
-            RECENT EVENTS
+            EVENTS UP TO SELECTED TIME
           </span>
 
           <span>
@@ -813,18 +1049,22 @@ export default function LiveSimulation() {
                 .reverse()
                 .map((event) => (
                   <tr
+                    tabIndex={0}
+                    aria-selected={event.frame_number === latest?.frame_number}
+                    onClick={() => replay.seek(replay.events.findIndex((e) => e.frame_number === event.frame_number))}
+                    onKeyDown={(key) => { if (key.key === "Enter" || key.key === " ") { key.preventDefault(); replay.seek(replay.events.findIndex((e) => e.frame_number === event.frame_number)); } }}
                     key={
                       `${event.simulation_id}`
                       + `-${event.frame_number}`
                     }
                   >
-                    <td>
+                    <td data-label="FRAME">
                       {
                         event.frame_number
                       }
                     </td>
 
-                    <td>
+                    <td data-label="SIM TIME">
                       {
                         event
                           .simulated_timestamp
@@ -836,7 +1076,7 @@ export default function LiveSimulation() {
                       }
                     </td>
 
-                    <td>
+                    <td data-label="SAR CLASS">
                       {
                         event.sar
                           ?.classification
@@ -844,7 +1084,7 @@ export default function LiveSimulation() {
                       }
                     </td>
 
-                    <td>
+                    <td data-label="SEPARATION">
                       {fmt(
                         event.encounter
                           ?.current_separation_nautical_miles,
@@ -853,7 +1093,7 @@ export default function LiveSimulation() {
                       NM
                     </td>
 
-                    <td>
+                    <td data-label="DCPA">
                       {fmt(
                         event.encounter
                           ?.dcpa_nautical_miles,
@@ -862,7 +1102,7 @@ export default function LiveSimulation() {
                       NM
                     </td>
 
-                    <td>
+                    <td data-label="TCPA">
                       {fmt(
                         event.encounter
                           ?.tcpa_minutes,
@@ -871,7 +1111,7 @@ export default function LiveSimulation() {
                       min
                     </td>
 
-                    <td>
+                    <td data-label="RISK">
                       <span
                         className={riskClass(
                           event.encounter

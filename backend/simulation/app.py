@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -18,6 +19,7 @@ from .config import (
 from .encounter_controller import aggregate_minute_observations
 from .motion_inference import MotionPredictor
 from .risk_engine import calculate_collision_risk
+from .environment_service import get_environment_snapshot
 from .sar_streamer import SARImageStreamer
 from .schemas import (
     CollisionRiskRequest,
@@ -25,6 +27,7 @@ from .schemas import (
     SimulationStartRequest,
 )
 from .state import SimulationState
+from .replay_store import ReplayStore
 
 
 LOGGER = logging.getLogger("maritime-simulation")
@@ -36,8 +39,60 @@ LOGGER = logging.getLogger("maritime-simulation")
 router = APIRouter(tags=["Maritime Simulation"])
 
 STATE = SimulationState()
+REPLAY = ReplayStore()
 AIS_CONTROLLER = AISSimulationController()
 MOTION_PREDICTOR = MotionPredictor()
+
+# MongoDB collections are injected by backend.main so the
+# simulation reuses OceanIQ's existing MongoClient.
+SIMULATION_RUNS_COLLECTION = None
+SIMULATION_EVENTS_COLLECTION = None
+
+
+def configure_simulation_persistence(
+    runs_collection,
+    events_collection,
+) -> None:
+    global SIMULATION_RUNS_COLLECTION
+    global SIMULATION_EVENTS_COLLECTION
+
+    SIMULATION_RUNS_COLLECTION = runs_collection
+    SIMULATION_EVENTS_COLLECTION = events_collection
+    # Optional read indexes; inability to create them must not stop inference.
+    for collection, keys, name in (
+        (events_collection, [("recording_id", 1), ("frame_number", 1)], "simulation_replay_recording_frame"),
+        (runs_collection, [("recording_id", 1)], "simulation_replay_recording"),
+    ):
+        if collection is not None:
+            try:
+                collection.create_index(keys, name=name)
+            except Exception:
+                LOGGER.warning("Replay index could not be created: %s", name)
+
+
+def _mongo_safe(value):
+    """
+    Convert common ML/numpy values into Mongo-safe Python types.
+    """
+    if isinstance(value, dict):
+        return {
+            str(key): _mongo_safe(item)
+            for key, item in value.items()
+        }
+
+    if isinstance(value, (list, tuple)):
+        return [
+            _mongo_safe(item)
+            for item in value
+        ]
+
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            pass
+
+    return value
 
 
 def _serialise_state(state: dict[str, Any]) -> dict[str, Any]:
@@ -74,7 +129,16 @@ def _safe_motion(
 
     try:
         _ensure_motion_predictor_ready()
-        return MOTION_PREDICTOR.predict(history[-10:]), None
+        prediction = dict(MOTION_PREDICTOR.predict(history[-10:]))
+        # Attach display provenance without changing inference inputs or outputs.
+        input_time = history[-1]["timestamp"]
+        if isinstance(input_time, str):
+            input_time = datetime.fromisoformat(input_time.replace("Z", "+00:00"))
+        prediction["input_end_timestamp"] = input_time.isoformat()
+        prediction["forecast_target_timestamp"] = (
+            input_time + timedelta(minutes=prediction["forecast_horizon_minutes"])
+        ).isoformat()
+        return prediction, None
     except Exception as error:
         return None, str(error)
 
@@ -83,20 +147,72 @@ def _classification_payload(
     result: dict[str, Any] | None,
     error: str | None,
 ) -> dict[str, Any]:
+
     if error:
-        return {"error": error}
+        return {
+            "error": error
+        }
 
     result = result or {}
 
     return {
-        "classification": result.get("final_prediction"),
-        "yolo_prediction": result.get("yolo_prediction"),
-        "yolo_confidence": result.get("yolo_confidence"),
-        "cnn_prediction": result.get("cnn_prediction"),
-        "cnn_confidence": result.get("cnn_confidence"),
-        "agreement_status": result.get("decision_status"),
-    }
+        "classification":
+            result.get(
+                "final_prediction"
+            ),
 
+        "binary_prediction":
+            result.get(
+                "binary_prediction"
+            ),
+
+        "confidence":
+            result.get(
+                "confidence"
+            ),
+
+        "bird_probability":
+            result.get(
+                "bird_probability"
+            ),
+
+        "ship_probability":
+            result.get(
+                "ship_probability"
+            ),
+
+        "unknown_probability":
+            result.get(
+                "unknown_probability"
+            ),
+        "unknown_threshold":
+            result.get(
+                "unknown_threshold"
+            ),
+
+        "decision_status":
+            result.get(
+                "decision_status"
+            ),
+
+        # Compatibility with the existing UI
+        # until all simulation display code
+        # has migrated.
+        "agreement_status":
+            result.get(
+                "decision_status"
+            ),
+
+        "model_name":
+            result.get(
+                "model_name"
+            ),
+
+        "model_version":
+            result.get(
+                "model_version"
+            ),
+    }
 
 def _run_simulation(
     request: SimulationStartRequest,
@@ -128,6 +244,8 @@ def _run_simulation(
     target_tick_history: list[dict[str, Any]] = []
 
     tick_index = 0
+    cycle_index = 0
+    recording_id = STATE.recording_id
 
     try:
         while not STATE.stop_event.is_set():
@@ -137,6 +255,7 @@ def _run_simulation(
                     break
 
                 tick_index = 0
+                cycle_index += 1
                 own_tick_history.clear()
                 target_tick_history.clear()
 
@@ -191,6 +310,43 @@ def _run_simulation(
             )
 
             # ---------------------------------------------------------
+            # ENVIRONMENTAL CONTEXT
+            #
+            # Use the midpoint of the two vessels as the encounter
+            # location. Results are cached by environment_service so
+            # an external API call is not made for every frame.
+            # ---------------------------------------------------------
+            encounter_latitude = (
+                float(own_state["latitude"])
+                + float(target_state["latitude"])
+            ) / 2.0
+
+            encounter_longitude = (
+                float(own_state["longitude"])
+                + float(target_state["longitude"])
+            ) / 2.0
+
+            try:
+                environment = get_environment_snapshot(
+                    encounter_latitude,
+                    encounter_longitude,
+                )
+            except Exception as environment_error:
+                LOGGER.warning(
+                    "Environmental lookup failed: %s",
+                    environment_error,
+                )
+
+                environment = {
+                    "available": False,
+                    "error": str(environment_error),
+                    "latitude": encounter_latitude,
+                    "longitude": encounter_longitude,
+                    "used_for_model_inference": False,
+                    "used_for_collision_risk": False,
+                }
+
+            # ---------------------------------------------------------
             # SAVE CURRENT EVENT
             # ---------------------------------------------------------
             with STATE.lock:
@@ -201,6 +357,12 @@ def _run_simulation(
 
                 event = {
                     "simulation_id": scenario.scenario_id,
+                    "recording_id": recording_id,
+                    "event_id": f"{recording_id}:{frame_number}",
+                    "cycle_index": cycle_index,
+                    "tick_index": tick_index,
+                    "simulated_interval_seconds": request.simulated_interval_seconds,
+                    "replay_elapsed_seconds": (frame_number - 1) * request.simulated_interval_seconds,
                     "scenario_mode": scenario.mode,
                     "scenario_description": scenario.description,
                     "running": True,
@@ -213,6 +375,7 @@ def _run_simulation(
                     ].isoformat(),
                     "sar": {
                         "filename": image_path.name,
+                        "relative_path": str(image_path.resolve().relative_to(SAR_ROOT.resolve())),
                         "image_url": (
                             "/simulation/current-image"
                             f"?frame={frame_number}"
@@ -243,6 +406,7 @@ def _run_simulation(
                         "motion_error": target_motion_error,
                     },
                     "encounter": encounter,
+                    "environment": environment,
                     "simulation_notice": (
                         "SAR appearance and AIS target motion are linked "
                         "by this simulation scenario; random SAR images "
@@ -252,6 +416,22 @@ def _run_simulation(
 
                 STATE.latest = event
                 STATE.history.append(event)
+                REPLAY.append(recording_id, event)
+
+            # -------------------------------------------------
+            # SAVE SIMULATION EVENT TO MONGODB
+            # Database failure is intentionally non-fatal.
+            # -------------------------------------------------
+            if SIMULATION_EVENTS_COLLECTION is not None:
+                try:
+                    SIMULATION_EVENTS_COLLECTION.insert_one(
+                        _mongo_safe(event)
+                    )
+                except Exception as db_error:
+                    LOGGER.warning(
+                        "Simulation event MongoDB save failed: %s",
+                        db_error,
+                    )
 
             tick_index += 1
 
@@ -274,6 +454,284 @@ def _run_simulation(
 
             if STATE.latest:
                 STATE.latest["running"] = False
+
+            final_frame_count = STATE.frame_number
+            final_error = STATE.last_error
+
+        REPLAY.finish(recording_id, final_error)
+
+        if SIMULATION_RUNS_COLLECTION is not None:
+            try:
+                SIMULATION_RUNS_COLLECTION.update_one(
+                    {
+                        "recording_id": recording_id
+                    },
+                    {
+                        "$set": {
+                            "status":
+                                (
+                                    "error"
+                                    if final_error
+                                    else "stopped"
+                                ),
+                            "ended_at":
+                                datetime.now(
+                                    timezone.utc
+                                ),
+                            "frame_count":
+                                final_frame_count,
+                            "last_error":
+                                final_error,
+                        }
+                    },
+                )
+            except Exception as db_error:
+                LOGGER.warning(
+                    "Simulation completion MongoDB save failed: %s",
+                    db_error,
+                )
+
+
+
+# =========================================================
+# DATABASE HISTORY
+# =========================================================
+
+def _serialise_mongo_document(
+    document: dict[str, Any],
+) -> dict[str, Any]:
+
+    document = dict(document)
+
+    document.pop(
+        "_id",
+        None,
+    )
+
+    for key, value in list(
+        document.items()
+    ):
+        if hasattr(
+            value,
+            "isoformat",
+        ):
+            document[key] = (
+                value.isoformat()
+            )
+
+    return document
+
+
+@router.get(
+    "/simulation/database/runs"
+)
+def database_simulation_runs(
+    limit: int = Query(
+        default=20,
+        ge=1,
+        le=200,
+    ),
+):
+    if (
+        SIMULATION_RUNS_COLLECTION
+        is None
+    ):
+        return {
+            "database_available":
+                False,
+            "records": [],
+        }
+
+    try:
+        records = list(
+            SIMULATION_RUNS_COLLECTION
+            .find({})
+            .sort(
+                "started_at",
+                -1,
+            )
+            .limit(limit)
+        )
+
+        records = [
+            _serialise_mongo_document(
+                record
+            )
+            for record in records
+        ]
+
+        return {
+            "database_available":
+                True,
+            "count":
+                len(records),
+            "records":
+                records,
+        }
+
+    except Exception as error:
+        LOGGER.warning(
+            "Simulation run DB read failed: %s",
+            error,
+        )
+
+        return {
+            "database_available":
+                False,
+            "records": [],
+            "error":
+                str(error),
+        }
+
+
+@router.get(
+    "/simulation/database/events"
+)
+def database_simulation_events(
+    simulation_id: str | None = None,
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=500,
+    ),
+):
+    if (
+        SIMULATION_EVENTS_COLLECTION
+        is None
+    ):
+        return {
+            "database_available":
+                False,
+            "records": [],
+        }
+
+    try:
+        query = {}
+
+        if simulation_id:
+            query[
+                "simulation_id"
+            ] = simulation_id
+
+        records = list(
+            SIMULATION_EVENTS_COLLECTION
+            .find(
+                query,
+                {"_id": 0},
+            )
+            .sort(
+                "real_timestamp",
+                -1,
+            )
+            .limit(limit)
+        )
+
+        return {
+            "database_available":
+                True,
+            "count":
+                len(records),
+            "records":
+                records,
+        }
+
+    except Exception as error:
+        LOGGER.warning(
+            "Simulation event DB read failed: %s",
+            error,
+        )
+
+        return {
+            "database_available":
+                False,
+            "records": [],
+            "error":
+                str(error),
+        }
+
+
+@router.get(
+    "/simulation/database/summary"
+)
+def database_simulation_summary():
+
+    if (
+        SIMULATION_RUNS_COLLECTION
+        is None
+        or
+        SIMULATION_EVENTS_COLLECTION
+        is None
+    ):
+        return {
+            "database_available":
+                False,
+        }
+
+    try:
+        latest_run = (
+            SIMULATION_RUNS_COLLECTION
+            .find_one(
+                {},
+                sort=[
+                    (
+                        "started_at",
+                        -1,
+                    )
+                ],
+            )
+        )
+
+        latest_event = (
+            SIMULATION_EVENTS_COLLECTION
+            .find_one(
+                {},
+                {"_id": 0},
+                sort=[
+                    (
+                        "real_timestamp",
+                        -1,
+                    )
+                ],
+            )
+        )
+
+        return {
+            "database_available":
+                True,
+
+            "run_count":
+                SIMULATION_RUNS_COLLECTION
+                .count_documents({}),
+
+            "event_count":
+                SIMULATION_EVENTS_COLLECTION
+                .count_documents({}),
+
+            "latest_run":
+                (
+                    _serialise_mongo_document(
+                        latest_run
+                    )
+                    if latest_run
+                    else None
+                ),
+
+            "latest_event":
+                latest_event,
+        }
+
+    except Exception as error:
+        LOGGER.warning(
+            "Simulation summary DB read failed: %s",
+            error,
+        )
+
+        return {
+            "database_available":
+                False,
+            "error":
+                str(error),
+        }
 
 
 # =========================================================
@@ -362,11 +820,19 @@ def start_simulation(
         ) from error
 
     STATE.reset()
+    recording_id = str(uuid4())
+    REPLAY.begin(recording_id, {
+        "simulation_id": scenario.scenario_id,
+        "scenario_mode": scenario.mode,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "status": "running",
+    })
 
     with STATE.lock:
         STATE.starting = False
         STATE.running = True
         STATE.simulation_id = scenario.scenario_id
+        STATE.recording_id = recording_id
         STATE.mode = scenario.mode
 
         STATE.thread = threading.Thread(
@@ -382,8 +848,60 @@ def start_simulation(
 
         STATE.thread.start()
 
+    # -----------------------------------------------------
+    # SAVE SIMULATION RUN
+    # -----------------------------------------------------
+    if SIMULATION_RUNS_COLLECTION is not None:
+        try:
+            SIMULATION_RUNS_COLLECTION.update_one(
+                {
+                    "recording_id": recording_id
+                },
+                {
+                    "$set": {
+                        "recording_id": recording_id,
+                        "simulation_id":
+                            scenario.scenario_id,
+                        "scenario_mode":
+                            scenario.mode,
+                        "scenario_description":
+                            scenario.description,
+                        "status":
+                            "running",
+                        "started_at":
+                            datetime.now(
+                                timezone.utc
+                            ),
+                        "real_interval_seconds":
+                            request.real_interval_seconds,
+                        "simulated_interval_seconds":
+                            request.simulated_interval_seconds,
+                        "scenario_minutes":
+                            request.scenario_minutes,
+                        "loop":
+                            request.loop,
+                        "seed":
+                            request.seed,
+                        "sar_source":
+                            request.sar_source,
+                        "sar_root":
+                            str(SAR_ROOT),
+                        "motion_model_path":
+                            str(MOTION_MODEL_PATH),
+                    }
+                },
+                upsert=True,
+            )
+
+        except Exception as db_error:
+            LOGGER.warning(
+                "Simulation run MongoDB save failed: %s",
+                db_error,
+            )
+
     return {
         "message": "Simulation started",
+        "recording_id": recording_id,
         "simulation_id": scenario.scenario_id,
         "mode": scenario.mode,
         "description": scenario.description,
@@ -430,6 +948,7 @@ def simulation_status():
             "running": STATE.running,
             "starting": STATE.starting,
             "simulation_id": STATE.simulation_id,
+            "recording_id": STATE.recording_id,
             "mode": STATE.mode,
             "frame_number": STATE.frame_number,
             "processed_events": len(
@@ -540,3 +1059,83 @@ def predict_collision_risk(
         request.own_vessel.model_dump(),
         request.target_vessel.model_dump(),
     )
+
+
+# Replay is read-only: no model calls, scenario regeneration, or risk recalculation.
+@router.get("/simulation/replay/runs")
+def replay_runs():
+    runs = {r["recording_id"]: r for r in REPLAY.list_runs()}
+    database_available = False
+    if SIMULATION_RUNS_COLLECTION is not None:
+        try:
+            docs = (SIMULATION_RUNS_COLLECTION.find(
+                {"recording_id": {"$exists": True}}, {"_id": 0})
+                .sort("started_at", -1).limit(20))
+            for doc in docs:
+                doc = _serialise_mongo_document(doc)
+                runs.setdefault(doc["recording_id"], doc)
+            database_available = True
+        except Exception:
+            LOGGER.warning("Replay run database unavailable")
+    records = sorted(runs.values(), key=lambda r: str(r.get("started_at", "")), reverse=True)
+    return {"records": records[:20], "database_available": database_available,
+            "memory_event_limit": REPLAY.max_events, "memory_run_limit": REPLAY.max_runs}
+
+
+@router.get("/simulation/replay/events")
+def replay_events(
+    recording_id: str = Query(min_length=1, max_length=120),
+    after_frame: int = Query(default=0, ge=0),
+    limit: int = Query(default=500, ge=1, le=500),
+):
+    memory = REPLAY.events(recording_id)
+    candidates = {e["frame_number"]: e for e in memory if e["frame_number"] > after_frame}
+    earliest = memory[0]["frame_number"] if memory else None
+    database_available = False
+    if SIMULATION_EVENTS_COLLECTION is not None:
+        try:
+            query = {"recording_id": recording_id, "frame_number": {"$gt": after_frame}}
+            docs = (SIMULATION_EVENTS_COLLECTION.find(query, {"_id": 0})
+                    .sort("frame_number", 1).limit(limit + 1))
+            for event in docs:
+                candidates.setdefault(event["frame_number"], event)
+            first = SIMULATION_EVENTS_COLLECTION.find_one(
+                {"recording_id": recording_id}, {"_id": 0, "frame_number": 1},
+                sort=[("frame_number", 1)])
+            if first:
+                earliest = min(earliest or first["frame_number"], first["frame_number"])
+            database_available = True
+        except Exception:
+            LOGGER.warning("Replay event database unavailable; using bounded memory")
+    ordered = [candidates[k] for k in sorted(candidates)]
+    results = ordered[:limit]
+    return {"recording_id": recording_id, "results": results,
+            "has_more": len(ordered) > limit,
+            "next_after_frame": results[-1]["frame_number"] if results else after_frame,
+            "earliest_available_frame": earliest,
+            "truncated": earliest is not None and earliest > 1,
+            "database_available": database_available,
+            "storage_notice": "MongoDB records plus bounded in-process cache. Unsaved events do not survive restart."}
+
+
+@router.get("/simulation/replay/image")
+def replay_image(
+    recording_id: str = Query(min_length=1, max_length=120),
+    frame_number: int = Query(ge=1),
+):
+    event = next((e for e in REPLAY.events(recording_id)
+                  if e["frame_number"] == frame_number), None)
+    if event is None and SIMULATION_EVENTS_COLLECTION is not None:
+        try:
+            event = SIMULATION_EVENTS_COLLECTION.find_one(
+                {"recording_id": recording_id, "frame_number": frame_number}, {"_id": 0})
+        except Exception:
+            LOGGER.warning("Replay image database lookup unavailable")
+    relative = (event or {}).get("sar", {}).get("relative_path")
+    if not relative:
+        raise HTTPException(status_code=404, detail="Recorded radar image is unavailable.")
+    root = SAR_ROOT.resolve()
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root) or not path.is_file() or path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".bmp"}:
+        raise HTTPException(status_code=404, detail="Recorded radar asset is unavailable.")
+    return FileResponse(path)

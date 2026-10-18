@@ -12,7 +12,7 @@
  *   npm install axios lucide-react
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import axios from "axios";
 import { jsPDF } from "jspdf";
 import {
@@ -23,7 +23,6 @@ import {
   Upload,
   Activity,
   Cpu,
-  Shield,
   Eye,
   EyeOff,
   AlertTriangle,
@@ -32,97 +31,188 @@ import {
   ScanEye,
   Zap,
   BarChart2,
-  Crosshair,
+  Film,
   ChevronRight,
   Network,
   Globe,
   Layers,
+  Download,
   Navigation,
   UserRoundCog,
   LockKeyhole,
+  MessageSquare,
+  Home,
 } from "lucide-react";
 import LiveSimulation from "./LiveSimulation";
+import ChatAssistant from "./ChatAssistant";
+import HomePage from "./HomePage";
+
+import DatabaseViewer from "./DatabaseViewer";
+
+import {
+  generateRadarReport,
+  generateSimulationReport,
+  generateDatabaseReport,
+} from "./utils/oceaniqPdfReports";
+
+
+import { RadarDatabaseHistory } from "./DatabaseHistory";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LogoutButton from "./components/LogoutButton";
 import AdminUsers from "./components/AdminUsers";
+import MediaFitToggle from "./components/MediaFitToggle";
+import ThemeToggle from "./components/ThemeToggle";
 import { useAuth } from "./context/AuthContext";
+import { useTheme } from "./context/ThemeContext";
+// Vessel Detection page, results, overlays, and saved-record components.
+import VesselDetectionPage from "./features/vessel-detection/pages/VesselDetectionPage";
+import BoatDetectionOverlay from "./features/vessel-detection/components/BoatDetectionOverlay";
+import VesselDetectionResults from "./features/vessel-detection/components/VesselDetectionResults";
+import VesselDetectionHistory from "./features/vessel-detection/components/VesselDetectionHistory";
+import VesselImageLightbox from "./features/vessel-detection/components/VesselImageLightbox";
+import {
+  filterVesselDetections,
+  parseVesselClassifications,
+  VESSEL_HISTORY_PAGE_SIZE,
+} from "./features/vessel-detection/utils/vesselDetectionUtils";
+import {
+  createVesselRecord,
+  deleteVesselRecord,
+  getVesselHistory,
+  predictVesselImage,
+  predictVesselVideo,
+  updateVesselRecord as updateVesselRecordRequest,
+} from "./features/vessel-detection/api/vesselDetectionApi";
 import "./App.css";
 
 /* ══════════════════════════════════════════════════════════
    BACKEND CONFIGURATION — do not modify endpoint names
    ══════════════════════════════════════════════════════════ */
-const API_BASE_URL = "http://localhost:8000";
-
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? "" : "http://localhost:8000");
+  
 /* ══════════════════════════════════════════════════════════
    MODULE DEFINITIONS
    Each module maps to a backend endpoint and has its own
    color identity used throughout the UI.
    ══════════════════════════════════════════════════════════ */
 const MODULES = {
+  home: {
+    id: "home",
+    label: "Home",
+    title: "Home",
+    endpoint: null,
+    description:
+      "Welcome to OceanIQ — a research decision-support workspace for maritime image analysis and vessel-motion interpretation.",
+    icon: Home,
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
+    tag: "Workspace overview",
+    statusLabel: "Overview",
+  },
   hull: {
     id: "hull",
-    label: "Hull Defect",
-    title: "Hull Defect Detection",
+    label: "Hull Condition",
+    title: "Hull Condition",
     endpoint: `${API_BASE_URL}/predict-hull-defect`,
-    description: "CNN-based detection of corrosion, cracks, and biofouling, and paint damage with Grad-CAM explainability.",
+    description: "Assess underwater hull imagery for corrosion, cracks, biofouling and paint damage, with Grad-CAM highlighting influential regions.",
     icon: Anchor,
-    color: "#00d4ff",
-    colorDim: "#00d4ff22",
-    colorMid: "#00d4ff55",
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
     tag: "CNN · Grad-CAM",
-    statusLabel: "HULL SCANNER",
+    statusLabel: "Hull intake",
   },
   sea: {
     id: "sea",
     label: "Sea State",
-    title: "Sea State Classification",
+    title: "Sea State",
     endpoint: `${API_BASE_URL}/predict-sea-state`,
-    description: "Multi-class deep learning model classifying sea surface conditions from imagery.",
+    description: "Classify sea-surface conditions (calm, moderate, rough, very_rough) from imagery, with validation and decision-support notes.",
     icon: Waves,
-    color: "#00ffb3",
-    colorDim: "#00ffb322",
-    colorMid: "#00ffb355",
+    color: "#72e5b1",
+    lightColor: "#1f9d6e",
+    colorDim: "#72e5b122",
+    colorMid: "#72e5b155",
     tag: "Multi-class CNN",
-    statusLabel: "SEA ANALYZER",
+    statusLabel: "Sea intake",
   },
   boat: {
+    // Vessel Detection uses its own image and video analysis flow.
     id: "boat",
-    label: "Boat Detection",
+    label: "Vessel Detection",
     title: "Vessel Detection",
     endpoint: `${API_BASE_URL}/predict-boat-detection`,
-    description: "YOLO-based real-time object detection for maritime vessel identification.",
+    description: "Identify vessel types and read the vessel name, port, and IMO number from separate images.",
     icon: Ship,
-    color: "#a78bfa",
-    colorDim: "#a78bfa22",
-    colorMid: "#a78bfa55",
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
     tag: "YOLO · Object Detection",
-    statusLabel: "VESSEL TRACKER",
+    statusLabel: "Vessel intake",
   },
   radar: {
     id: "radar",
     label: "Radar Objects",
-    title: "Radar Object Classification",
+    title: "Radar Objects",
     endpoint: `${API_BASE_URL}/predict-radar-object`,
-    description: "Fused YOLO + CNN pipeline classifying radar signatures as bird, ship, or unknown.",
+    description: "Three-class RadarTargetCNN for radar screenshots: bird, ship, or unknown.",
     icon: RadioTower,
-    color: "#f97316",
-    colorDim: "#f9731622",
-    colorMid: "#f9731655",
-    tag: "YOLO + CNN Fusion",
-    statusLabel: "RADAR ANALYSIS",
+    color: "#ffbd74",
+    lightColor: "#c97a22",
+    colorDim: "#ffbd7422",
+    colorMid: "#ffbd7455",
+    tag: "RadarTargetCNN",
+    statusLabel: "Radar intake",
+  },
+  chat: {
+    id: "chat",
+    label: "Chat Assistant",
+    title: "Chat Assistant",
+    endpoint: `${API_BASE_URL}/chat/analyze`,
+    description: "Guided, deterministic image analysis using OceanIQ’s existing hull, sea-state, vessel and radar models — no LLM.",
+    icon: MessageSquare,
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
+    tag: "Guided · Multi-component",
+    statusLabel: "Guided analysis",
   },
   simulation: {
     id: "simulation",
     label: "Live Simulation",
-    title: "Live Maritime Simulation",
-    description: "Streams SAR images, replays two AIS trajectories, forecasts motion with the selected GRU and assesses DCPA/TCPA collision risk.",
+    title: "Live Simulation",
+    description: "Replay SAR/radar frames with AIS trajectories, GRU motion forecasts and DCPA/TCPA encounter-risk assessment.",
     icon: Navigation,
-    color: "#00d4ff",
-    colorDim: "#00d4ff22",
-    colorMid: "#00d4ff55",
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
     tag: "SAR · AIS · GRU · CPA",
-    statusLabel: "SIMULATION CONTROL",
+    statusLabel: "Simulation control",
   },
+
+  database: {
+    id: "database",
+    label: "Database",
+    title: "Database",
+    endpoint: null,
+    description:
+      "Review stored radar classifications and live-simulation runs when MongoDB persistence is available.",
+    icon: Layers,
+    color: "#66d6ff",
+    lightColor: "#1591c2",
+    colorDim: "#66d6ff22",
+    colorMid: "#66d6ff55",
+    tag: "MongoDB records",
+    statusLabel: "History",
+  },
+
 };
 
 /* ══════════════════════════════════════════════════════════
@@ -227,27 +317,34 @@ function SystemClock() {
   return <span className="sys-clock">{time}</span>;
 }
 
-/* ══════════════════════════════════════════════════════════
-   SYSTEM STATUS ROWS — shows AI subsystem states
-   Blinking dots reinforce the "live system" aesthetic
-   ══════════════════════════════════════════════════════════ */
-const STATUS_LINES = [
-  { label: "AI ENGINE",   state: "ONLINE" },
-  { label: "MODEL CACHE", state: "READY" },
-  { label: "INFERENCE",   state: "ARMED" },
-  { label: "BACKEND",     state: "ACTIVE" },
-];
-
+/* Session facts only — no fabricated engine/cache/latency metrics */
 function StatusRows() {
+  const { user, canWrite, isAdmin, accessLevel } = useAuth();
+  const accessLabel = isAdmin
+    ? "Admin"
+    : canWrite
+      ? "Read / write"
+      : accessLevel === "read_only"
+        ? "Read only"
+        : "Limited";
+
   return (
     <div className="status-rows">
-      {STATUS_LINES.map((s) => (
-        <div className="status-row" key={s.label}>
-          <span className="status-blink" />
-          <span className="status-key">{s.label}</span>
-          <span className="status-val">{s.state}</span>
-        </div>
-      ))}
+      <div className="status-row">
+        <span className="status-blink" aria-hidden="true" />
+        <span className="status-key">Session</span>
+        <span className="status-val">Signed in</span>
+      </div>
+      <div className="status-row">
+        <span className="status-blink" aria-hidden="true" />
+        <span className="status-key">Access</span>
+        <span className="status-val">{accessLabel}</span>
+      </div>
+      <div className="status-row">
+        <span className="status-blink" aria-hidden="true" />
+        <span className="status-key">Account</span>
+        <span className="status-val">{user?.username || "—"}</span>
+      </div>
     </div>
   );
 }
@@ -280,13 +377,13 @@ function ConfidenceRing({ value, color }) {
           }}
         />
         <text x="55" y="51" textAnchor="middle"
-          fill="white" fontSize="17" fontWeight="700" fontFamily="'Space Mono', monospace">
+          fill="white" fontSize="17" fontWeight="700" fontFamily="Inter, system-ui, sans-serif">
           {Math.round(value)}%
         </text>
         <text x="55" y="66" textAnchor="middle"
-          fill="rgba(255,255,255,0.35)" fontSize="7.5" fontFamily="'Space Mono', monospace"
-          letterSpacing="1.5">
-          CONFIDENCE
+          fill="rgba(255,255,255,0.45)" fontSize="8" fontFamily="Inter, system-ui, sans-serif"
+          letterSpacing="1.2">
+          Confidence
         </text>
       </svg>
     </div>
@@ -329,10 +426,15 @@ function ProbBar({ label, value, color }) {
    ══════════════════════════════════════════════════════════ */
 function AppContent() {
   const { user, canWrite, isAdmin, accessLevel } = useAuth();
+  const { theme } = useTheme();
 
   /* ── Application state ── */
-  const [activeModule, setActiveModule] = useState("hull");
+  const [activeModule, setActiveModule] = useState("home");
   const [file, setFile] = useState(null);
+  const [vesselVideoFile, setVesselVideoFile] = useState(null);
+  const [vesselVideoPreview, setVesselVideoPreview] = useState(null);
+  const [vesselInfoFile, setVesselInfoFile] = useState(null);
+  const [vesselInfoPreview, setVesselInfoPreview] = useState(null);
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -342,10 +444,67 @@ function AppContent() {
   const [applyEnhancement, setApplyEnhancement] = useState(false);
   const [seaHistory, setSeaHistory] = useState([]);
   const [seaHistoryLoading, setSeaHistoryLoading] = useState(false);
+  const [vesselHistory, setVesselHistory] = useState([]);
+  const [vesselHistoryPage, setVesselHistoryPage] = useState(1);
+  const [vesselHistoryLoading, setVesselHistoryLoading] = useState(false);
+  const [vesselHistoryError, setVesselHistoryError] = useState("");
+  const [vesselHistoryStorage, setVesselHistoryStorage] = useState("unknown");
+  const [expandedHistoryImage, setExpandedHistoryImage] = useState(null);
+  const [vesselRecordId, setVesselRecordId] = useState(null);
+  const [shipAnalysisDone, setShipAnalysisDone] = useState(false);
+  const [videoAnalysisDone, setVideoAnalysisDone] = useState(false);
+  const [vesselInfoAnalysisDone, setVesselInfoAnalysisDone] = useState(false);
+  const [vesselDraft, setVesselDraft] = useState({
+    vessel_name: "",
+    port: "",
+    port_country: "",
+    port_country_code: "",
+    port_type: "Foreign",
+    imo_number: "",
+    vessel_classifications: "",
+    notes: "",
+  });
+  const [editingVesselRecordId, setEditingVesselRecordId] = useState(null);
+  const [editingVesselDraft, setEditingVesselDraft] = useState(null);
+  const [vesselDraftDirty, setVesselDraftDirty] = useState(false);
   const [showAccessAdmin, setShowAccessAdmin] = useState(false);
+  const [mediaFit, setMediaFit] = useState(() => {
+    const saved = window.localStorage.getItem("oceaniq-media-fit");
+    return saved === "fill" ? "fill" : "fit";
+  });
+  const fileInputRef = useRef(null);
+  const resultsCardRef = useRef(null);
 
-  const mod = MODULES[activeModule];
+  useEffect(() => {
+    window.localStorage.setItem("oceaniq-media-fit", mediaFit);
+  }, [mediaFit]);
+  useEffect(() => () => {
+    if (vesselInfoPreview) URL.revokeObjectURL(vesselInfoPreview);
+  }, [vesselInfoPreview]);
+  useEffect(() => () => {
+    if (vesselVideoPreview) URL.revokeObjectURL(vesselVideoPreview);
+  }, [vesselVideoPreview]);
+useEffect(() => {
+    if (!result || loading || window.innerWidth > 1180) return;
+    const timer = window.setTimeout(() => {
+      resultsCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [result, loading]);
+
+  const baseMod = MODULES[activeModule];
+  const modColor = theme === "light" ? (baseMod.lightColor || baseMod.color) : baseMod.color;
+  const mod = {
+    ...baseMod,
+    color: modColor,
+    colorDim: `${modColor}18`,
+    colorMid: `${modColor}48`,
+  };
   const ModIcon = mod.icon;
+  const cleanVesselDetections = useMemo(
+    () => filterVesselDetections(result?.results || []),
+    [result?.results],
+  );
 
   /* ── Sea-state history helpers ── */
   const fetchSeaHistory = useCallback(async () => {
@@ -370,16 +529,157 @@ function AppContent() {
     }
   };
 
+  const fetchVesselHistory = useCallback(async () => {
+    try {
+      setVesselHistoryLoading(true);
+      setVesselHistoryError("");
+      const { data } = await getVesselHistory();
+      const history = data.history || [];
+      setVesselHistory(history);
+      setVesselHistoryPage((page) => Math.min(
+        page,
+        Math.max(1, Math.ceil(history.length / VESSEL_HISTORY_PAGE_SIZE)),
+      ));
+      setVesselHistoryStorage(data.storage || "unknown");
+    } catch (error) {
+      console.error("Failed to load vessel detection history:", error);
+      const detail = error.response?.data?.detail || error.response?.data?.error;
+      setVesselHistoryError(
+        detail
+          ? `Could not load saved vessel records: ${detail}`
+          : `Could not load saved vessel records: ${error.message}`,
+      );
+    } finally {
+      setVesselHistoryLoading(false);
+    }
+  }, []);
+
   /* ── File selection handler ── */
   const processFile = useCallback((f) => {
-    if (!canWrite || !f || !f.type.startsWith("image/")) return;
+    if (!canWrite || !f) return;
+    const fileExtension = f.name.split(".").pop()?.toLowerCase();
+    const isVideo = activeModule === "boat" && (
+      f.type.startsWith("video/") ||
+      ["mp4", "mov", "avi", "mkv", "webm"].includes(fileExtension)
+    );
+    if (isVideo) {
+      setFile(null);
+      setPreview(null);
+      setVesselVideoFile(f);
+      setVesselVideoPreview(URL.createObjectURL(f));
+      setShipAnalysisDone(false);
+      setVideoAnalysisDone(false);
+      setVesselInfoAnalysisDone(false);
+      setVesselRecordId(null);
+      setVesselDraft({
+        vessel_name: "",
+        port: "",
+        port_country: "",
+        port_country_code: "",
+        imo_number: "",
+        vessel_classifications: "",
+        notes: "",
+      });
+      setResult(null);
+      return;
+    }
+    if (!f.type.startsWith("image/")) return;
     setFile(f);
-    setResult(null);
+    if (activeModule === "boat") {
+      setVesselVideoFile(null);
+      setVesselVideoPreview(null);
+      setVideoAnalysisDone(false);
+      setVesselRecordId(null);
+      setShipAnalysisDone(false);
+      setVesselDraft((current) => ({ ...current, vessel_classifications: "" }));
+      setResult((current) => current?.video_analysis_performed ? null : current ? {
+        ...current,
+        image: null,
+        results: [],
+        count: 0,
+        confidence: 0,
+        vessel_detection_performed: false,
+      } : null);
+    }
+    if (activeModule !== "boat") setResult(null);
     setShowGradcam(false);
     setPreview(URL.createObjectURL(f));
-  }, [canWrite]);
+  }, [activeModule, canWrite]);
 
   const handleFileChange = (e) => processFile(e.target.files[0]);
+  const handleVesselInfoFileChange = (e) => {
+    const selectedFile = e.target.files[0];
+    if (!canWrite || !selectedFile?.type.startsWith("image/")) return;
+    setVesselInfoFile(selectedFile);
+    setVesselInfoPreview(URL.createObjectURL(selectedFile));
+    setVesselInfoAnalysisDone(false);
+    setVesselDraft({
+      vessel_name: "",
+      port: "",
+      port_country: "",
+      port_country_code: "",
+      imo_number: "",
+      vessel_classifications: "",
+      notes: "",
+    });
+    setVesselRecordId(null);
+    setResult((current) => current ? {
+      ...current,
+      vessel_info_image: null,
+      vessel_info: null,
+      vessel_info_detections: [],
+      vessel_info_performed: false,
+    } : null);
+  };
+  const clearVesselImage = () => {
+    setFile(null);
+    setPreview(null);
+    setVesselRecordId(null);
+    setShipAnalysisDone(false);
+    setResult((current) => (
+      current?.vessel_info_performed
+        ? {
+            ...current,
+            vessel_detection_performed: false,
+            image: null,
+            results: [],
+            count: 0,
+            confidence: 0,
+          }
+        : null
+    ));
+  };
+  const clearVesselVideo = () => {
+    setVesselVideoFile(null);
+    setVesselVideoPreview(null);
+    setVideoAnalysisDone(false);
+    setShipAnalysisDone(false);
+    setVesselInfoAnalysisDone(false);
+    setVesselRecordId(null);
+    setVesselDraft({
+      vessel_name: "",
+      port: "",
+      port_country: "",
+      port_country_code: "",
+      imo_number: "",
+      vessel_classifications: "",
+      notes: "",
+    });
+    setResult(null);
+  };
+  const clearVesselInfoImage = () => {
+    setVesselInfoFile(null);
+    setVesselInfoPreview(null);
+    setVesselInfoAnalysisDone(false);
+    setVesselRecordId(null);
+    setResult((current) => current ? {
+      ...current,
+      vessel_info_performed: false,
+      vessel_info_image: null,
+      vessel_info: null,
+      vessel_info_detections: [],
+    } : null);
+  };
 
   /* ── Drag and drop handlers ── */
   const handleDrop = (e) => {
@@ -392,12 +692,21 @@ function AppContent() {
   const switchModule = (id) => {
     setActiveModule(id);
     setFile(null);
+    setVesselVideoFile(null);
+    setVesselVideoPreview(null);
+    setVesselInfoFile(null);
+    setVesselInfoPreview(null);
+    setVesselRecordId(null);
+    setShipAnalysisDone(false);
+    setVideoAnalysisDone(false);
+    setVesselInfoAnalysisDone(false);
     setPreview(null);
     setResult(null);
     setShowGradcam(false);
     setApplyEnhancement(false);
     setSidebarOpen(false);
     if (id === "sea") fetchSeaHistory();
+    if (id === "boat") fetchVesselHistory();
   };
 
   /* ══════════════════════════════════════════════
@@ -407,6 +716,7 @@ function AppContent() {
      All original endpoints are preserved.
      ══════════════════════════════════════════════ */
   const runPrediction = async () => {
+    if (activeModule === "boat") return runVesselAnalysis("ship");
     if (!file || loading || !canWrite) return;
     const form = new FormData();
     form.append("file", file);
@@ -427,167 +737,1738 @@ function AppContent() {
       if (activeModule === "sea") fetchSeaHistory();
     } catch (err) {
       console.error("Prediction error:", err);
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail
+        || err.response?.data?.error
+        || err.response?.data?.summary;
+
+      const readableDetail = typeof detail === "string" ? detail : null;
+
+      const fallback = !err.response
+        ? "Cannot reach the backend. Check that it is running."
+        : status === 503
+          ? "A required service is unavailable. Check the backend database/authentication connection."
+          : status === 401
+            ? "Your session has expired. Please sign in again."
+            : status === 403
+              ? "The request was denied. Check your permissions and sign-in session."
+              : status === 422
+                ? "The uploaded request failed validation."
+                : "Analysis failed. Check the backend logs.";
+
       setResult({
         __error: true,
-        message: `Connection failed — is the backend running at ${API_BASE_URL}?`,
+        message: `${readableDetail || fallback}${status ? ` (HTTP ${status})` : ""}`,
       });
     } finally {
       setLoading(false);
     }
   };
 
-  /* ── Sea-state PDF report from the Sea-State branch ── */
-  const generateSeaStatePDF = () => {
-    if (!result || activeModule !== "sea" || result.__error) return;
+  const runVesselAnalysis = async (stage) => {
+    const sourceFile = stage === "video"
+      ? vesselVideoFile
+      : stage === "ship" ? file : vesselInfoFile;
+    if (!sourceFile || loading || !canWrite) return;
+    const form = new FormData();
+    form.append(
+      stage === "video" ? "video_file" : stage === "ship" ? "file" : "vessel_info_file",
+      sourceFile,
+    );
+    try {
+      setLoading(true);
+      const { data } = stage === "video"
+        ? await predictVesselVideo(form)
+        : await predictVesselImage(form);
+      if (data?.error) {
+        setResult({ __error: true, message: data.error, details: data.validation });
+        return;
+      }
+      if (stage === "video") {
+        setResult(data);
+        setVideoAnalysisDone(true);
+        setShipAnalysisDone(false);
+        setVesselInfoAnalysisDone(false);
+        setVesselRecordId(null);
+        setVesselDraft((current) => ({
+          ...current,
+          vessel_classifications: [...new Set(data.vessel_classifications || [])].join(" or "),
+        }));
+        return;
+      }
+      setResult((current) => ({
+        ...current,
+        ...data,
+        image: stage === "ship" ? data.image : current?.image || null,
+        results: stage === "ship" ? data.results || [] : current?.results || [],
+        count: stage === "ship" ? data.count || 0 : current?.count || 0,
+        confidence: stage === "ship" ? data.confidence || 0 : current?.confidence || 0,
+        status: stage === "ship" ? data.status : current?.status || data.status,
+        vessel_detection_performed: stage === "ship" || Boolean(current?.vessel_detection_performed),
+        vessel_info_image: stage === "info" ? data.vessel_info_image : current?.vessel_info_image || null,
+        vessel_info: stage === "info" ? data.vessel_info : current?.vessel_info || null,
+        vessel_info_detections: stage === "info"
+          ? data.vessel_info_detections || []
+          : current?.vessel_info_detections || [],
+        vessel_info_performed: stage === "info" || Boolean(current?.vessel_info_performed),
+      }));
+      if (stage === "ship") {
+        setShipAnalysisDone(true);
+        setVesselRecordId(null);
+        setVesselDraft((current) => ({
+          ...current,
+          vessel_classifications: [...new Set(data.vessel_classifications || [])].join(" or "),
+        }));
+      } else {
+        setVesselInfoAnalysisDone(true);
+        setVesselDraft((current) => ({
+          ...current,
+          vessel_name: data.vessel_info?.vessel_name || "",
+          port: data.vessel_info?.port || "",
+          port_country: data.vessel_info?.port_country || "",
+          port_country_code: data.vessel_info?.port_country_code || "",
+          port_type: data.vessel_info?.port_type || "Foreign",
+          imo_number: data.vessel_info?.imo_number || "",
+        }));
+        setVesselRecordId(null);
+      }
+      setVesselDraftDirty(false);
+    } catch (err) {
+      console.error("Vessel analysis error:", err);
+      setResult({ __error: true, message: "Vessel analysis failed. Check the backend and try again." });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 20;
-    const contentWidth = pageWidth - margin * 2;
-    let y = 20;
+  const submitVesselRecord = async () => {
+    if (vesselVideoFile || videoAnalysisDone || (!shipAnalysisDone && !vesselInfoAnalysisDone) || loading || !canWrite) return;
+    const hasVesselInfo = vesselInfoAnalysisDone || Boolean(
+      vesselDraft.vessel_name.trim() ||
+      vesselDraft.port.trim() ||
+      vesselDraft.port_country ||
+      vesselDraft.imo_number.trim()
+    );
+    const record = {
+      ...(result || {}),
+      image: shipAnalysisDone ? file?.name : null,
+      vessel_info_image: vesselInfoAnalysisDone ? vesselInfoFile?.name : null,
+      vessel_detection_performed: shipAnalysisDone,
+      vessel_info_performed: vesselInfoAnalysisDone,
+      vessel_info: hasVesselInfo ? {
+        vessel_name: (vesselDraft.vessel_name || "").trim(),
+        port: (vesselDraft.port || "").trim(),
+        port_country: vesselDraft.port_country || "",
+        port_country_code: vesselDraft.port_country_code || "",
+        port_type: vesselDraft.port_type || "Foreign",
+        port_ocr: result?.vessel_info?.port_ocr || "",
+        port_match_status: result?.vessel_info?.port_match_status || "",
+        port_match_score: result?.vessel_info?.port_match_score ?? null,
+        imo_number: (vesselDraft.imo_number || "").trim(),
+      } : null,
+      notes: (vesselDraft.notes || "").trim(),
+      results: shipAnalysisDone
+        ? result?.results || []
+        : [],
+      vessel_classifications: shipAnalysisDone
+        ? parseVesselClassifications(vesselDraft.vessel_classifications)
+        : [],
+      vessel_kinds: shipAnalysisDone ? result?.vessel_kinds || [] : [],
+      count: shipAnalysisDone ? result?.count || 0 : 0,
+      status: shipAnalysisDone ? result?.status || "Analyzed" : "Vessel information analyzed",
+    };
+    const form = new FormData();
+    form.append("record_json", JSON.stringify(record));
+    if (shipAnalysisDone && file) form.append("ship_image", file);
+    if (vesselInfoAnalysisDone && vesselInfoFile) {
+      form.append("vessel_info_image", vesselInfoFile);
+    }
+    try {
+      setLoading(true);
+      const { data } = await createVesselRecord(form);
+      if (data?.error) {
+        setResult((current) => ({ ...current, __saveError: data.error }));
+        return;
+      }
+      setVesselRecordId(data.record.record_id);
+      setVesselHistoryStorage(data.storage || vesselHistoryStorage);
+      setVesselDraftDirty(false);
+      setResult((current) => ({
+        ...current,
+        record_id: data.record.record_id,
+        cloudinary_images: data.record.cloudinary_images,
+        vessel_info: data.record.vessel_info,
+        __saveSuccess: `Record saved to ${data.storage}.`,
+      }));
+      await fetchVesselHistory();
+    } catch (error) {
+      console.error("Failed to save vessel record:", error);
+      const detail = error.response?.data?.detail || error.response?.data?.error;
+      setResult((current) => ({
+        ...current,
+        __saveError: detail
+          ? `Could not save the vessel record: ${detail}`
+          : `Could not save the vessel record: ${error.message}`,
+      }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateVesselRecord = async (recordId, draft) => {
+    const classifications = parseVesselClassifications(draft.vessel_classifications || "");
+    const updates = {
+      vessel_info: {
+        vessel_name: (draft.vessel_name || "").trim() || null,
+        port: (draft.port || "").trim() || null,
+        port_country: draft.port_country || null,
+        port_country_code: draft.port_country_code || null,
+        port_type: draft.port_type || "Foreign",
+        imo_number: (draft.imo_number || "").trim() || null,
+      },
+      vessel_classifications: classifications,
+      results: draft.results || [],
+      notes: (draft.notes || "").trim(),
+    };
+    const { data } = await updateVesselRecordRequest(recordId, updates);
+    if (data?.error) throw new Error(data.error);
+    return data.record;
+  };
+
+  const saveVesselRecordEdits = async () => {
+    if (!vesselRecordId || loading) return;
+    try {
+      setLoading(true);
+      await updateVesselRecord(vesselRecordId, {
+        ...vesselDraft,
+        results: result?.results || [],
+      });
+      setVesselDraftDirty(false);
+      setResult((current) => ({ ...current, __saveSuccess: "Saved vessel record updated." }));
+      await fetchVesselHistory();
+    } catch (error) {
+      console.error("Failed to update vessel record:", error);
+      setResult((current) => ({ ...current, __saveError: "Could not update the saved vessel record." }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startEditingVesselRecord = (item) => {
+    setEditingVesselRecordId(item.record_id);
+    setEditingVesselDraft({
+      vessel_name: item.vessel_info?.vessel_name || "",
+      port: item.vessel_info?.port || "",
+      port_country: item.vessel_info?.port_country || "",
+      port_country_code: item.vessel_info?.port_country_code || "",
+      port_type: item.vessel_info?.port_type || "Foreign",
+      imo_number: item.vessel_info?.imo_number || "",
+      vessel_classifications: (item.vessel_classifications || []).join(" or "),
+      notes: item.notes || "",
+      results: item.results || [],
+    });
+  };
+
+  const saveEditedVesselHistoryRecord = async () => {
+    try {
+      await updateVesselRecord(editingVesselRecordId, editingVesselDraft);
+      setEditingVesselRecordId(null);
+      setEditingVesselDraft(null);
+      await fetchVesselHistory();
+    } catch (error) {
+      console.error("Failed to update vessel history record:", error);
+      setVesselHistoryError("Could not update the selected vessel record.");
+    }
+  };
+
+  const deleteVesselHistoryRecord = async (recordId) => {
+    if (!canWrite || !window.confirm("Delete this saved vessel record?")) return;
+    try {
+      const { data } = await deleteVesselRecord(recordId);
+      if (data?.error) throw new Error(data.error);
+      setVesselHistory((current) => current.filter((item) => item.record_id !== recordId));
+      const remainingRecords = vesselHistory.length - 1;
+      setVesselHistoryPage((page) => Math.min(
+        page,
+        Math.max(1, Math.ceil(remainingRecords / VESSEL_HISTORY_PAGE_SIZE)),
+      ));
+      if (vesselRecordId === recordId) setVesselRecordId(null);
+    } catch (error) {
+      console.error("Failed to delete vessel history record:", error);
+      setVesselHistoryError(error.response?.data?.error || "Could not delete the vessel record.");
+    }
+  };
+
+  const downloadBoatAnalysis = async () => {
+    if (activeModule !== "boat" || !preview || !result?.results?.length) return;
+
+    const image = new Image();
+    image.src = preview;
+    await image.decode();
+
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext("2d");
+    context.drawImage(image, 0, 0);
+
+    const scaleX = image.naturalWidth / (result.image_size?.[0] || image.naturalWidth);
+    const scaleY = image.naturalHeight / (result.image_size?.[1] || image.naturalHeight);
+    context.font = `700 ${Math.max(14, image.naturalWidth / 42)}px monospace`;
+    result.results.forEach((detection) => {
+      if (!Array.isArray(detection.box) || detection.box.length !== 4) return;
+      const [x1, y1, x2, y2] = detection.box.map((value) => Number(value));
+      const left = x1 * scaleX;
+      const top = y1 * scaleY;
+      const width = (x2 - x1) * scaleX;
+      const height = (y2 - y1) * scaleY;
+      const boxColor = detection.label === "Local Ship" ? "#00ffb3" : "#a78bfa";
+      const label = detection.label;
+      const labelHeight = Math.max(24, image.naturalWidth / 32);
+      const labelWidth = context.measureText(label).width + 16;
+      context.strokeStyle = boxColor;
+      context.lineWidth = Math.max(3, image.naturalWidth / 160);
+      context.strokeRect(left, top, width, height);
+      context.fillStyle = boxColor;
+      context.fillRect(left, Math.max(0, top - labelHeight), labelWidth, labelHeight);
+      context.fillStyle = "#041018";
+      context.fillText(label, left + 8, Math.max(16, top - 8));
+    });
+
+    const link = document.createElement("a");
+    link.download = `boat-analysis-${Date.now()}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  };
+
+  /* ── Sea-state PDF report from the Sea-State branch ── */
+const generateHullPDF = async () => {
+  if (!result || activeModule !== "hull" || result.__error) {
+    alert("Please complete a hull inspection before generating the report.");
+    return;
+  }
+
+  try {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+    const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
+    const M = 15;
+    const CW = W - M * 2;
+
+    const C = {
+      navy: [15, 35, 60],
+      teal: [0, 150, 145],
+      ink: [35, 48, 65],
+      muted: [105, 119, 135],
+      pale: [241, 246, 249],
+      line: [218, 227, 233],
+      white: [255, 255, 255],
+      green: [35, 139, 100],
+      amber: [219, 150, 35],
+      orange: [221, 105, 45],
+      red: [195, 59, 65]
+    };
+
+    let y = 0;
+    const generatedAt = new Date();
+    const reportId = "OIQ-HULL-" + generatedAt.getTime().toString().slice(-8);
+    const defectName = String(result.prediction || "Unknown")
+      .replace(/[_-]/g, " ")
+      .replace(/\b\w/g, (ch) => ch.toUpperCase());
+
+    const severity = result.severity || {};
+    const severityText = String(severity.level || "Not assessed");
+    const severityLower = severityText.toLowerCase();
+
+    const severityColor =
+      severityLower.includes("critical") ? C.red :
+      severityLower.includes("high") ? C.orange :
+      severityLower.includes("moderate") || severityLower.includes("medium") ? C.amber :
+      severityLower.includes("low") || severityLower.includes("minor") ? C.green :
+      C.muted;
+
+    const confidenceValue = Number(result.confidence);
+    const confidencePct = Number.isFinite(confidenceValue)
+      ? Math.max(0, Math.min(100, confidenceValue <= 1 ? confidenceValue * 100 : confidenceValue))
+      : null;
+
+    const addText = (text, x, top, width, fontSize = 9, color = C.ink, style = "normal") => {
+      doc.setFont("helvetica", style);
+      doc.setFontSize(fontSize);
+      doc.setTextColor(...color);
+      const lines = doc.splitTextToSize(String(text ?? ""), width);
+      doc.text(lines, x, top);
+      return lines.length * fontSize * 0.42 + 1.5;
+    };
+
+    const sectionTitle = (title, top) => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(...C.navy);
+      doc.text(title.toUpperCase(), M, top);
+      doc.setDrawColor(...C.teal);
+      doc.setLineWidth(0.8);
+      doc.line(M, top + 2.5, M + 16, top + 2.5);
+      return top + 8;
+    };
+
+    const ensureSpace = (needed) => {
+      if (y + needed > H - 18) {
+        doc.addPage();
+        y = 18;
+      }
+    };
+
+    const imageToDataURL = (url) => new Promise((resolve) => {
+      if (!url) {
+        resolve(null);
+        return;
+      }
+
+      const image = new Image();
+      image.crossOrigin = "anonymous";
+
+      image.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = image.naturalWidth || image.width;
+          canvas.height = image.naturalHeight || image.height;
+          const context = canvas.getContext("2d");
+
+          if (!context) {
+            resolve(null);
+            return;
+          }
+
+          context.drawImage(image, 0, 0);
+          resolve(canvas.toDataURL("image/jpeg", 0.88));
+        } catch {
+          resolve(null);
+        }
+      };
+
+      image.onerror = () => resolve(null);
+      image.src = url;
+    });
+
+    const addImagePanel = async (title, url, x, top, width, height) => {
+      doc.setFillColor(...C.pale);
+      doc.setDrawColor(...C.line);
+      doc.roundedRect(x, top, width, height, 2, 2, "FD");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(...C.navy);
+      doc.text(title.toUpperCase(), x + 3, top + 6);
+
+      const data = await imageToDataURL(url);
+
+      if (data) {
+        try {
+          const props = doc.getImageProperties(data);
+          const maxW = width - 6;
+          const maxH = height - 12;
+          const scale = Math.min(maxW / props.width, maxH / props.height);
+          const imgW = props.width * scale;
+          const imgH = props.height * scale;
+          doc.addImage(
+            data,
+            "JPEG",
+            x + (width - imgW) / 2,
+            top + 9 + (maxH - imgH) / 2,
+            imgW,
+            imgH
+          );
+        } catch {
+          addText("Image could not be embedded.", x + 3, top + 18, width - 6, 7, C.muted);
+        }
+      } else {
+        addText("Image unavailable.", x + 3, top + 18, width - 6, 7, C.muted);
+      }
+    };
 
     const addFooter = () => {
-      const pageNumber = doc.internal.getNumberOfPages();
-      doc.setFontSize(8);
-      doc.setTextColor(100, 100, 100);
-      doc.text("OceanIQ - Marine AI Intelligence Platform", margin, pageHeight - 10);
-      doc.text(`Page ${pageNumber}`, pageWidth - margin, pageHeight - 10, { align: "right" });
-    };
+      const pages = doc.getNumberOfPages();
 
-    const checkPageSpace = (requiredSpace = 10) => {
-      if (y + requiredSpace > pageHeight - 25) {
-        addFooter();
-        doc.addPage();
-        y = 20;
+      for (let page = 1; page <= pages; page += 1) {
+        doc.setPage(page);
+        doc.setDrawColor(...C.line);
+        doc.setLineWidth(0.3);
+        doc.line(M, H - 12, W - M, H - 12);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(...C.muted);
+        doc.text("OCEANIQ  |  UNDERWATER HULL CONDITION ASSESSMENT", M, H - 7);
+        doc.text("Report " + reportId, W - M, H - 7, { align: "right" });
+        doc.text("Page " + page + " of " + pages, W - M, H - 3, { align: "right" });
       }
     };
 
-    const addTitle = (title) => {
-      checkPageSpace(15);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(13);
-      doc.setTextColor(0, 120, 180);
-      doc.text(title, margin, y);
-      y += 8;
-    };
+    // REPORT HEADER
+    doc.setFillColor(...C.navy);
+    doc.rect(0, 0, W, 39, "F");
+    doc.setFillColor(...C.teal);
+    doc.rect(0, 39, W, 2, "F");
 
-    const addText = (text, indent = 0) => {
-      if (text === undefined || text === null) return;
-      const lines = doc.splitTextToSize(String(text), contentWidth - indent);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(30, 30, 30);
-      lines.forEach((line) => {
-        checkPageSpace(6);
-        doc.text(line, margin + indent, y);
-        y += 5.5;
-      });
-      y += 1;
-    };
+    doc.setTextColor(...C.white);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(19);
+    doc.text("OCEANIQ", M, 14);
 
-    const addKeyValue = (label, value) => {
-      checkPageSpace(8);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.setTextColor(30, 30, 30);
-      doc.text(`${label}:`, margin, y);
-      doc.setFont("helvetica", "normal");
-      const labelWidth = doc.getTextWidth(`${label}: `);
-      const lines = doc.splitTextToSize(String(value ?? "N/A"), contentWidth - labelWidth);
-      doc.text(lines[0], margin + labelWidth, y);
-      y += 5.5;
-      for (let i = 1; i < lines.length; i += 1) {
-        checkPageSpace(6);
-        doc.text(lines[i], margin + labelWidth, y);
-        y += 5.5;
-      }
-      y += 1;
-    };
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text("UNDERWATER HULL INSPECTION REPORT", M, 22);
 
-    const addBullet = (text) => {
-      const lines = doc.splitTextToSize(String(text), contentWidth - 8);
-      lines.forEach((line, index) => {
-        checkPageSpace(6);
-        doc.text(index === 0 ? `• ${line}` : `  ${line}`, margin + 3, y);
-        y += 5.5;
-      });
-      y += 1;
-    };
+    doc.setFontSize(7.5);
+    doc.setTextColor(195, 215, 226);
+    doc.text("AI-ASSISTED CONDITION ASSESSMENT", M, 29);
+    doc.text("REPORT ID  " + reportId, W - M, 14, { align: "right" });
+    doc.text(
+      generatedAt.toLocaleString(),
+      W - M,
+      22,
+      { align: "right" }
+    );
+
+    y = 51;
+
+    // INSPECTION SUMMARY
+    y = sectionTitle("01  |  Inspection summary", y);
+
+    doc.setFillColor(...C.pale);
+    doc.setDrawColor(...C.line);
+    doc.roundedRect(M, y, CW, 34, 3, 3, "FD");
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...C.muted);
+    doc.text("DETECTED CONDITION", M + 5, y + 7);
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(20);
-    doc.setTextColor(20, 20, 20);
-    doc.text("OceanIQ Marine AI Intelligence Platform", pageWidth / 2, y, { align: "center" });
-    y += 9;
-    doc.setFontSize(15);
-    doc.setTextColor(0, 120, 180);
-    doc.text("Sea State Classification Report", pageWidth / 2, y, { align: "center" });
-    y += 12;
-    doc.setDrawColor(0, 160, 200);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 10;
+    doc.setFontSize(16);
+    doc.setTextColor(...C.navy);
+    doc.text(doc.splitTextToSize(defectName, CW * 0.53), M + 5, y + 15);
 
-    addTitle("Prediction Information");
-    addKeyValue("File", result.filename || "N/A");
-    addKeyValue("Timestamp", result.timestamp || new Date().toLocaleString());
-    addKeyValue("Processing Time", `${result.processing_time ?? "N/A"} sec`);
-    addKeyValue("Enhancement Applied", result.enhancement_applied ? "Yes" : "No");
-    y += 3;
+    const dividerX = M + CW * 0.61;
+    doc.setDrawColor(...C.line);
+    doc.line(dividerX, y + 5, dividerX, y + 29);
 
-    addTitle("Sea State Classification");
-    addKeyValue("Predicted Sea State", String(result.predicted_sea_state || "N/A").toUpperCase());
-    addKeyValue("AI Confidence", `${result.confidence ?? 0}%`);
-    y += 3;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...C.muted);
+    doc.text("MODEL CONFIDENCE", dividerX + 5, y + 7);
 
-    addTitle("Overall Risk");
-    addKeyValue("Risk Level", result.risk_indicator?.level || "N/A");
-    addKeyValue("Risk Score", `${result.risk_indicator?.score ?? "N/A"}/100`);
-    addKeyValue("Risk Factors", result.risk_indicator?.reasons?.length ? result.risk_indicator.reasons.join(", ") : "None");
-    y += 3;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(...C.teal);
+    doc.text(confidencePct === null ? "N/A" : confidencePct.toFixed(1) + "%", dividerX + 5, y + 16);
 
-    addTitle("Class Probabilities");
-    Object.entries(result.probabilities || {}).forEach(([label, probability]) => {
-      addKeyValue(label, `${probability}%`);
-    });
-    y += 3;
+    doc.setFillColor(...C.line);
+    doc.roundedRect(dividerX + 5, y + 21, CW * 0.29, 3, 1, 1, "F");
 
-    addTitle("Image Quality Analysis");
-    if (result.image_quality) {
-      addKeyValue("Brightness", `${result.image_quality.brightness_status} (${result.image_quality.brightness_value})`);
-      addKeyValue("Contrast", `${result.image_quality.contrast_status} (${result.image_quality.contrast_value})`);
-      addKeyValue("Sharpness", `${result.image_quality.sharpness_status} (${result.image_quality.sharpness_value})`);
-      addKeyValue("Visibility", result.image_quality.visibility_status);
-    }
-    y += 3;
-
-    addTitle("Decision Support Recommendation");
-    if (result.recommendation) {
-      addKeyValue("Risk Level", result.recommendation.risk_level);
-      addText(result.recommendation.message);
+    if (confidencePct !== null) {
+      doc.setFillColor(...C.teal);
+      doc.roundedRect(
+        dividerX + 5,
+        y + 21,
+        Math.max(0.5, CW * 0.29 * confidencePct / 100),
+        3,
+        1,
+        1,
+        "F"
+      );
     }
 
-    addTitle("Weather Suitability");
-    if (result.weather_suitability) {
-      addKeyValue("Condition", result.weather_suitability.condition);
-      addKeyValue("Suitability Score", `${result.weather_suitability.score}/100`);
-      if (result.weather_suitability.operations?.length) {
-        addText("Suitable Operations:");
-        result.weather_suitability.operations.forEach(addBullet);
+    y += 40;
+
+    // SEVERITY AND RECOMMENDATION
+    ensureSpace(35);
+    y = sectionTitle("02  |  Severity and maintenance guidance", y);
+
+    doc.setFillColor(...severityColor);
+    doc.roundedRect(M, y, 32, 10, 2, 2, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...C.white);
+    doc.text(severityText.toUpperCase().slice(0, 18), M + 16, y + 6.5, { align: "center" });
+
+    let detailsY = y + 5;
+    if (severity.method) {
+      detailsY += addText("Assessment method: " + severity.method, M + 37, detailsY, CW - 37, 8, C.muted);
+    }
+    if (severity.reason) {
+      detailsY += addText("Reason: " + severity.reason, M + 37, detailsY, CW - 37, 8, C.ink);
+    }
+
+    y = Math.max(y + 15, detailsY + 2);
+
+    const recommendation = severity.recommended_action || result.recommendation || "Arrange a qualified inspection and confirm the appropriate maintenance action.";
+    const recommendationHeight = Math.max(22, doc.splitTextToSize(String(recommendation), CW - 12).length * 4.2 + 12);
+
+    ensureSpace(recommendationHeight + 8);
+    doc.setFillColor(235, 248, 246);
+    doc.setDrawColor(190, 226, 220);
+    doc.roundedRect(M, y, CW, recommendationHeight, 2, 2, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...C.teal);
+    doc.text("RECOMMENDED ACTION", M + 5, y + 7);
+
+    addText(recommendation, M + 5, y + 13, CW - 10, 8, C.ink);
+    y += recommendationHeight + 5;
+
+    if (result.warning || severity.notice) {
+      const warning = result.warning || severity.notice;
+      const warningHeight = Math.max(14, doc.splitTextToSize(String(warning), CW - 12).length * 4 + 8);
+      ensureSpace(warningHeight + 4);
+
+      doc.setFillColor(255, 247, 232);
+      doc.setDrawColor(241, 218, 174);
+      doc.roundedRect(M, y, CW, warningHeight, 2, 2, "FD");
+      addText("NOTE: " + warning, M + 5, y + 7, CW - 10, 7.5, [125, 83, 25]);
+      y += warningHeight + 5;
+    }
+
+    // CLASS PROBABILITIES
+    const probabilities = result.probabilities && typeof result.probabilities === "object"
+      ? Object.entries(result.probabilities)
+      : [];
+
+    if (probabilities.length) {
+      ensureSpace(18 + probabilities.length * 9);
+      y = sectionTitle("03  |  Class probability distribution", y);
+
+      probabilities.sort((a, b) => Number(b[1]) - Number(a[1]));
+
+      const labelW = 43;
+      const valueW = 17;
+      const barX = M + labelW;
+      const barW = CW - labelW - valueW - 3;
+
+      for (const [label, rawValue] of probabilities) {
+        const raw = Number(rawValue);
+        const pct = Number.isFinite(raw)
+          ? Math.max(0, Math.min(100, raw <= 1 ? raw * 100 : raw))
+          : 0;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C.ink);
+        doc.text(
+          String(label).replace(/[_-]/g, " ").slice(0, 22),
+          M,
+          y + 3
+        );
+
+        doc.setFillColor(...C.pale);
+        doc.roundedRect(barX, y, barW, 4, 1, 1, "F");
+
+        if (pct > 0) {
+          doc.setFillColor(...(String(label).toLowerCase() === String(result.prediction).toLowerCase() ? C.teal : [133, 165, 180]));
+          doc.roundedRect(barX, y, Math.max(0.5, barW * pct / 100), 4, 1, 1, "F");
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C.navy);
+        doc.text(pct.toFixed(1) + "%", W - M, y + 3, { align: "right" });
+
+        y += 8;
       }
-      addKeyValue("Reason", result.weather_suitability.reason);
+
+      y += 3;
     }
 
-    addTitle("System Warnings");
-    if (result.warnings?.length) result.warnings.forEach(addBullet);
-    else addText("No system warnings.");
+    // IMAGE EVIDENCE
+    ensureSpace(63);
+    y = sectionTitle("04  |  Visual evidence", y);
+
+    const gap = 5;
+    const panelW = (CW - gap) / 2;
+    const panelH = 49;
+
+    await addImagePanel("Uploaded inspection image", preview, M, y, panelW, panelH);
+    await addImagePanel(
+      "Grad-CAM model attention",
+      result.gradcam || null,
+      M + panelW + gap,
+      y,
+      panelW,
+      panelH
+    );
+
+    y += panelH + 5;
+
+    if (result.gradcam) {
+      ensureSpace(16);
+      addText(
+        "Grad-CAM visualisation indicates image regions that influenced the model prediction. It is an explanatory aid, not a verified defect boundary.",
+        M,
+        y,
+        CW,
+        7.5,
+        C.muted
+      );
+      y += 11;
+    }
+
+    // INSPECTION NOTES
+    ensureSpace(45);
+    y = sectionTitle("05  |  Inspector notes", y);
+
+    doc.setDrawColor(...C.line);
+    doc.setFillColor(...C.white);
+    doc.roundedRect(M, y, CW, 29, 2, 2, "FD");
+
+    for (let i = 1; i <= 3; i += 1) {
+      doc.setDrawColor(...C.line);
+      doc.line(M + 5, y + i * 7, W - M - 5, y + i * 7);
+    }
+
+    y += 35;
+
+    const fieldW = (CW - 10) / 2;
+    addText("Inspector: ______________________________", M, y, fieldW, 7.5, C.muted);
+    addText("Inspection date: __________________", M + fieldW + 10, y, fieldW, 7.5, C.muted);
+    y += 9;
+    addText("Signature: ______________________________________________", M, y, CW, 7.5, C.muted);
+
+    // LIMITATIONS
+    y += 12;
+    ensureSpace(24);
+    doc.setFillColor(...C.pale);
+    doc.roundedRect(M, y, CW, 19, 2, 2, "F");
+    addText(
+      "IMPORTANT LIMITATION: This report contains AI-generated predictions and should support, not replace, assessment by a qualified marine inspector. Confirm the defect, severity, and maintenance decision through appropriate inspection.",
+      M + 4,
+      y + 6,
+      CW - 8,
+      7,
+      C.muted
+    );
 
     addFooter();
-    const filename = result.filename
-      ? `Sea_State_Report_${result.filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`
-      : "Sea_State_Prediction_Report.pdf";
-    doc.save(filename);
+    doc.save("OceanIQ_Hull_Report_" + defectName.replace(/[^a-z0-9]+/gi, "_") + ".pdf");
+  } catch (error) {
+    console.error("Hull PDF generation failed:", error);
+    alert("Unable to generate the Hull PDF report. Please check the browser console.");
+  }
+};
+
+/* Sea-state PDF report from the Sea-State branch */
+  const generateSeaStatePDF = () => {
+  if (!result || activeModule !== "sea" || result.__error) return;
+
+  const doc = new jsPDF();
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  const margin = 16;
+  const contentWidth = pageWidth - margin * 2;
+
+  let y = 0;
+
+  /* =====================================================
+     OCEANIQ PDF COLOR SYSTEM
+     ===================================================== */
+  const C = {
+    navy: [4, 15, 26],
+    navyLight: [10, 29, 48],
+
+    green: [0, 185, 135],
+    greenDark: [0, 130, 100],
+    greenSoft: [232, 249, 244],
+
+    cyan: [0, 160, 195],
+    cyanSoft: [232, 247, 251],
+
+    text: [30, 42, 52],
+    textSoft: [91, 108, 120],
+    textLight: [145, 158, 168],
+
+    border: [219, 228, 234],
+    rowLine: [232, 238, 242],
+    track: [232, 238, 241],
+
+    warning: [225, 116, 45],
+    warningSoft: [255, 246, 237],
+
+    danger: [210, 62, 82],
+    success: [0, 155, 112],
+    amber: [210, 150, 35],
+
+    white: [255, 255, 255],
   };
+
+  /* =====================================================
+     RISK COLOR
+     ===================================================== */
+  const getRiskColor = (level) => {
+    const value = String(level || "").toLowerCase();
+
+    if (value === "low") {
+      return C.success;
+    }
+
+    if (value === "medium") {
+      return C.amber;
+    }
+
+    if (value === "high") {
+      return C.warning;
+    }
+
+    if (
+      value === "very high" ||
+      value === "critical"
+    ) {
+      return C.danger;
+    }
+
+    return C.textSoft;
+  };
+
+  /* =====================================================
+     PAGE HEADER
+     ===================================================== */
+  const drawPageHeader = (firstPage = false) => {
+    if (firstPage) {
+      /* Main dark header */
+      doc.setFillColor(...C.navy);
+      doc.rect(
+        0,
+        0,
+        pageWidth,
+        39,
+        "F"
+      );
+
+      /* Green brand accent */
+      doc.setFillColor(...C.green);
+      doc.rect(
+        0,
+        0,
+        5,
+        39,
+        "F"
+      );
+
+      /* OceanIQ */
+      doc.setFont(
+        "helvetica",
+        "bold"
+      );
+
+      doc.setFontSize(22);
+      doc.setTextColor(...C.white);
+
+      doc.text(
+        "OceanIQ",
+        margin,
+        14
+      );
+
+      /* Platform name */
+      doc.setFont(
+        "helvetica",
+        "normal"
+      );
+
+      doc.setFontSize(9);
+      doc.setTextColor(
+        167,
+        190,
+        204
+      );
+
+      doc.text(
+        "Marine AI Intelligence Platform",
+        margin,
+        20.5
+      );
+
+      /* Report title */
+      doc.setFont(
+        "helvetica",
+        "bold"
+      );
+
+      doc.setFontSize(13);
+      doc.setTextColor(...C.green);
+
+      doc.text(
+        "SEA STATE CLASSIFICATION REPORT",
+        margin,
+        31.5
+      );
+
+      /* Decorative line */
+      doc.setDrawColor(...C.green);
+      doc.setLineWidth(0.8);
+
+      doc.line(
+        margin,
+        35,
+        pageWidth - margin,
+        35
+      );
+
+      y = 49;
+    } else {
+      /* Compact header for additional pages */
+      doc.setFillColor(...C.navy);
+      doc.rect(
+        0,
+        0,
+        pageWidth,
+        18,
+        "F"
+      );
+
+      doc.setFillColor(...C.green);
+      doc.rect(
+        0,
+        0,
+        3.5,
+        18,
+        "F"
+      );
+
+      doc.setFont(
+        "helvetica",
+        "bold"
+      );
+
+      doc.setFontSize(11);
+      doc.setTextColor(...C.white);
+
+      doc.text(
+        "OceanIQ",
+        margin,
+        8
+      );
+
+      doc.setFont(
+        "helvetica",
+        "normal"
+      );
+
+      doc.setFontSize(8);
+      doc.setTextColor(
+        174,
+        195,
+        207
+      );
+
+      doc.text(
+        "Sea State Classification Report",
+        margin,
+        13
+      );
+
+      y = 27;
+    }
+  };
+
+  /* =====================================================
+     FOOTER
+     ===================================================== */
+  const addFooter = () => {
+    const pageNumber =
+      doc.internal.getNumberOfPages();
+
+    doc.setDrawColor(...C.border);
+    doc.setLineWidth(0.3);
+
+    doc.line(
+      margin,
+      pageHeight - 15,
+      pageWidth - margin,
+      pageHeight - 15
+    );
+
+    doc.setFont(
+      "helvetica",
+      "normal"
+    );
+
+    doc.setFontSize(7.5);
+    doc.setTextColor(...C.textLight);
+
+    doc.text(
+      "OceanIQ - Marine AI Intelligence Platform",
+      margin,
+      pageHeight - 9
+    );
+
+    doc.text(
+      `Page ${pageNumber}`,
+      pageWidth - margin,
+      pageHeight - 9,
+      {
+        align: "right",
+      }
+    );
+  };
+
+  /* =====================================================
+     NEW PAGE HANDLER
+     ===================================================== */
+  const addNewPage = () => {
+    addFooter();
+
+    doc.addPage();
+
+    drawPageHeader(false);
+  };
+
+  /* =====================================================
+     PAGE SPACE CHECK
+     ===================================================== */
+  const checkPageSpace = (
+    requiredSpace = 10
+  ) => {
+    if (
+      y + requiredSpace >
+      pageHeight - 20
+    ) {
+      addNewPage();
+    }
+  };
+
+  /* =====================================================
+     SECTION HEADER
+     ===================================================== */
+  const addTitle = (
+    title,
+    accentColor = C.green
+  ) => {
+    checkPageSpace(15);
+
+    doc.setFillColor(
+      ...C.greenSoft
+    );
+
+    doc.roundedRect(
+      margin,
+      y,
+      contentWidth,
+      10,
+      1.5,
+      1.5,
+      "F"
+    );
+
+    doc.setFillColor(
+      ...accentColor
+    );
+
+    doc.roundedRect(
+      margin,
+      y,
+      3,
+      10,
+      1,
+      1,
+      "F"
+    );
+
+    doc.setFont(
+      "helvetica",
+      "bold"
+    );
+
+    doc.setFontSize(10.5);
+    doc.setTextColor(...C.navy);
+
+    doc.text(
+      title.toUpperCase(),
+      margin + 7,
+      y + 6.5
+    );
+
+    y += 15;
+  };
+
+  /* =====================================================
+     NORMAL TEXT
+     ===================================================== */
+  const addText = (
+    text,
+    indent = 0
+  ) => {
+    if (
+      text === undefined ||
+      text === null
+    ) {
+      return;
+    }
+
+    const lines =
+      doc.splitTextToSize(
+        String(text),
+        contentWidth - indent
+      );
+
+    doc.setFont(
+      "helvetica",
+      "normal"
+    );
+
+    doc.setFontSize(9.5);
+    doc.setTextColor(...C.text);
+
+    lines.forEach((line) => {
+      checkPageSpace(6);
+
+      doc.text(
+        line,
+        margin + indent,
+        y
+      );
+
+      y += 4.8;
+    });
+
+    y += 1.5;
+  };
+
+  /* =====================================================
+     KEY / VALUE ROW
+     ===================================================== */
+  const addKeyValue = (
+    label,
+    value,
+    valueColor = C.text
+  ) => {
+    const labelWidth = 50;
+    const valueWidth =
+      contentWidth -
+      labelWidth -
+      3;
+
+    const lines =
+      doc.splitTextToSize(
+        String(
+          value === undefined ||
+          value === null
+            ? "N/A"
+            : value
+        ),
+        valueWidth
+      );
+
+    const rowHeight =
+      Math.max(
+        7,
+        lines.length * 4.7 + 2
+      );
+
+    checkPageSpace(
+      rowHeight + 2
+    );
+
+    /* Label */
+    doc.setFont(
+      "helvetica",
+      "bold"
+    );
+
+    doc.setFontSize(8.5);
+    doc.setTextColor(
+      ...C.textSoft
+    );
+
+    doc.text(
+      label.toUpperCase(),
+      margin,
+      y + 3
+    );
+
+    /* Value */
+    doc.setFont(
+      "helvetica",
+      "normal"
+    );
+
+    doc.setFontSize(9.5);
+    doc.setTextColor(
+      ...valueColor
+    );
+
+    lines.forEach(
+      (line, index) => {
+        doc.text(
+          line,
+          margin + labelWidth,
+          y + 3 + index * 4.7
+        );
+      }
+    );
+
+    /* Separator */
+    doc.setDrawColor(...C.rowLine);
+    doc.setLineWidth(0.25);
+
+    doc.line(
+      margin,
+      y + rowHeight,
+      pageWidth - margin,
+      y + rowHeight
+    );
+
+    y += rowHeight + 2;
+  };
+
+  /* =====================================================
+     BULLET ITEM
+     ===================================================== */
+  const addBullet = (
+    text,
+    color = C.green
+  ) => {
+    const lines =
+      doc.splitTextToSize(
+        String(text),
+        contentWidth - 10
+      );
+
+    const requiredHeight =
+      Math.max(
+        6,
+        lines.length * 4.8 + 2
+      );
+
+    checkPageSpace(
+      requiredHeight
+    );
+
+    /* Bullet dot */
+    doc.setFillColor(...color);
+    doc.circle(
+      margin + 2,
+      y - 1,
+      1.1,
+      "F"
+    );
+
+    doc.setFont(
+      "helvetica",
+      "normal"
+    );
+
+    doc.setFontSize(9.3);
+    doc.setTextColor(...C.text);
+
+    lines.forEach(
+      (line, index) => {
+        doc.text(
+          line,
+          margin + 7,
+          y + index * 4.8
+        );
+      }
+    );
+
+    y +=
+      lines.length * 4.8 +
+      2;
+  };
+
+  /* =====================================================
+     PROBABILITY BAR
+     ===================================================== */
+  const addProbability = (
+    label,
+    probability
+  ) => {
+    checkPageSpace(12);
+
+    const value = Math.min(
+      100,
+      Math.max(
+        0,
+        Number(probability) || 0
+      )
+    );
+
+    const labelX = margin;
+    const barX = margin + 42;
+    const barWidth =
+      contentWidth - 62;
+
+    /* Label */
+    doc.setFont(
+      "helvetica",
+      "bold"
+    );
+
+    doc.setFontSize(8.7);
+    doc.setTextColor(...C.text);
+
+    const prettyLabel =
+      String(label)
+        .replaceAll("_", " ")
+        .toUpperCase();
+
+    doc.text(
+      prettyLabel,
+      labelX,
+      y + 3
+    );
+
+    /* Background track */
+    doc.setFillColor(...C.track);
+
+    doc.roundedRect(
+      barX,
+      y + 0.7,
+      barWidth,
+      3.5,
+      1.7,
+      1.7,
+      "F"
+    );
+
+    /* Probability fill */
+    const fillWidth =
+      (barWidth * value) /
+      100;
+
+    if (fillWidth > 0) {
+      doc.setFillColor(...C.green);
+
+      doc.roundedRect(
+        barX,
+        y + 0.7,
+        Math.max(
+          fillWidth,
+          1.5
+        ),
+        3.5,
+        1.7,
+        1.7,
+        "F"
+      );
+    }
+
+    /* Percentage */
+    doc.setFont(
+      "helvetica",
+      "bold"
+    );
+
+    doc.setFontSize(8.8);
+    doc.setTextColor(...C.greenDark);
+
+    doc.text(
+      `${value.toFixed(2)}%`,
+      pageWidth - margin,
+      y + 3,
+      {
+        align: "right",
+      }
+    );
+
+    y += 9;
+  };
+
+  /* =====================================================
+     SCORE BAR
+     ===================================================== */
+  const addScoreBar = (
+    label,
+    score,
+    color = C.green
+  ) => {
+    checkPageSpace(14);
+
+    const value = Math.min(
+      100,
+      Math.max(
+        0,
+        Number(score) || 0
+      )
+    );
+
+    doc.setFont(
+      "helvetica",
+      "bold"
+    );
+
+    doc.setFontSize(8.5);
+    doc.setTextColor(
+      ...C.textSoft
+    );
+
+    doc.text(
+      label.toUpperCase(),
+      margin,
+      y + 3
+    );
+
+    doc.setFont(
+      "helvetica",
+      "bold"
+    );
+
+    doc.setFontSize(9);
+    doc.setTextColor(...color);
+
+    doc.text(
+      `${value}/100`,
+      pageWidth - margin,
+      y + 3,
+      {
+        align: "right",
+      }
+    );
+
+    y += 6;
+
+    doc.setFillColor(...C.track);
+
+    doc.roundedRect(
+      margin,
+      y,
+      contentWidth,
+      4,
+      2,
+      2,
+      "F"
+    );
+
+    const fillWidth =
+      contentWidth *
+      (value / 100);
+
+    if (fillWidth > 0) {
+      doc.setFillColor(...color);
+
+      doc.roundedRect(
+        margin,
+        y,
+        Math.max(
+          fillWidth,
+          2
+        ),
+        4,
+        2,
+        2,
+        "F"
+      );
+    }
+
+    y += 9;
+  };
+
+  /* =====================================================
+     FIRST PAGE HEADER
+     ===================================================== */
+  drawPageHeader(true);
+
+  /* =====================================================
+     PREDICTION INFORMATION
+     ===================================================== */
+  addTitle(
+    "Prediction Information"
+  );
+
+  addKeyValue(
+    "File",
+    result.filename || "N/A"
+  );
+
+  addKeyValue(
+    "Timestamp",
+    result.timestamp ||
+      new Date().toLocaleString()
+  );
+
+  addKeyValue(
+    "Processing Time",
+    `${result.processing_time ?? "N/A"} sec`
+  );
+
+  addKeyValue(
+    "Enhancement Applied",
+    result.enhancement_applied
+      ? "Yes"
+      : "No"
+  );
+
+  y += 4;
+
+  /* =====================================================
+     SEA STATE CLASSIFICATION
+     ===================================================== */
+  addTitle(
+    "Sea State Classification"
+  );
+
+  addKeyValue(
+    "Predicted Sea State",
+    String(
+      result.predicted_sea_state ||
+      "N/A"
+    )
+      .replaceAll("_", " ")
+      .toUpperCase(),
+    C.greenDark
+  );
+
+  addKeyValue(
+    "AI Confidence",
+    `${result.confidence ?? 0}%`,
+    C.greenDark
+  );
+
+  y += 4;
+
+  /* =====================================================
+     OVERALL RISK
+     ===================================================== */
+  const riskColor =
+    getRiskColor(
+      result.risk_indicator?.level
+    );
+
+  addTitle(
+    "Overall Risk",
+    riskColor
+  );
+
+  addKeyValue(
+    "Risk Level",
+    result.risk_indicator?.level ||
+      "N/A",
+    riskColor
+  );
+
+  addScoreBar(
+    "Risk Score",
+    result.risk_indicator?.score ??
+      0,
+    riskColor
+  );
+
+  addKeyValue(
+    "Risk Factors",
+    result.risk_indicator
+      ?.reasons?.length
+      ? result.risk_indicator
+          .reasons
+          .join(", ")
+      : "None"
+  );
+
+  y += 4;
+
+  /* =====================================================
+     CLASS PROBABILITIES
+     ===================================================== */
+  addTitle(
+    "Class Probabilities"
+  );
+
+  Object.entries(
+    result.probabilities || {}
+  ).forEach(
+    ([label, probability]) => {
+      addProbability(
+        label,
+        probability
+      );
+    }
+  );
+
+  y += 4;
+
+  /* =====================================================
+     IMAGE QUALITY
+     ===================================================== */
+  addTitle(
+    "Image Quality Analysis"
+  );
+
+  if (result.image_quality) {
+    addKeyValue(
+      "Brightness",
+      `${result.image_quality.brightness_status} (${result.image_quality.brightness_value})`
+    );
+
+    addKeyValue(
+      "Contrast",
+      `${result.image_quality.contrast_status} (${result.image_quality.contrast_value})`
+    );
+
+    addKeyValue(
+      "Sharpness",
+      `${result.image_quality.sharpness_status} (${result.image_quality.sharpness_value})`
+    );
+
+    addKeyValue(
+      "Visibility",
+      result.image_quality
+        .visibility_status
+    );
+  }
+
+  y += 4;
+
+  /* =====================================================
+     DECISION SUPPORT
+     ===================================================== */
+  addTitle(
+    "Decision Support Recommendation"
+  );
+
+  if (result.recommendation) {
+    const recommendationColor =
+      getRiskColor(
+        result.recommendation
+          .risk_level
+      );
+
+    addKeyValue(
+      "Risk Level",
+      result.recommendation
+        .risk_level,
+      recommendationColor
+    );
+
+    addText(
+      result.recommendation
+        .message
+    );
+  }
+
+  y += 3;
+
+  /* =====================================================
+     WEATHER SUITABILITY
+     ===================================================== */
+  addTitle(
+    "Weather Suitability",
+    C.cyan
+  );
+
+  if (
+    result.weather_suitability
+  ) {
+    addKeyValue(
+      "Condition",
+      result.weather_suitability
+        .condition,
+      C.cyan
+    );
+
+    addScoreBar(
+      "Suitability Score",
+      result.weather_suitability
+        .score,
+      C.cyan
+    );
+
+    if (
+      result.weather_suitability
+        .operations?.length
+    ) {
+      checkPageSpace(10);
+
+      doc.setFont(
+        "helvetica",
+        "bold"
+      );
+
+      doc.setFontSize(8.5);
+      doc.setTextColor(
+        ...C.textSoft
+      );
+
+      doc.text(
+        "SUITABLE OPERATIONS",
+        margin,
+        y
+      );
+
+      y += 7;
+
+      result.weather_suitability
+        .operations
+        .forEach(
+          (operation) => {
+            addBullet(
+              operation,
+              C.cyan
+            );
+          }
+        );
+
+      y += 1;
+    }
+
+    addKeyValue(
+      "Reason",
+      result.weather_suitability
+        .reason
+    );
+  }
+
+  y += 4;
+
+  /* =====================================================
+     SYSTEM WARNINGS
+     ===================================================== */
+  addTitle(
+    "System Warnings",
+    C.warning
+  );
+
+  if (
+    result.warnings?.length
+  ) {
+    result.warnings.forEach(
+      (warning) => {
+        addBullet(
+          warning,
+          C.warning
+        );
+      }
+    );
+  } else {
+    addText(
+      "No system warnings."
+    );
+  }
+
+  /* =====================================================
+     FINAL FOOTER
+     ===================================================== */
+  addFooter();
+
+  /* =====================================================
+     SAVE FILE
+     ===================================================== */
+  const filename = result.filename
+    ? `Sea_State_Report_${result.filename
+        .replace(
+          /\.[^/.]+$/,
+          ""
+        )
+        .replace(
+          /[^a-zA-Z0-9_-]/g,
+          "_"
+        )}.pdf`
+    : "Sea_State_Prediction_Report.pdf";
+
+  doc.save(filename);
+};
 
   /* ══════════════════════════════════════════════
      RESULTS RENDERER
@@ -730,7 +2611,62 @@ function AppContent() {
                 })}
               </div>
             )}
+            {/* HULL ASSESSMENT DETAILS */}
+            {activeModule === "hull" && (
+              <div style={{ marginTop: 18, display: "grid", gap: 14 }}>
 
+                {/* Hull Validation */}
+                <div className="a-card" style={{ padding: 16 }}>
+                  <p className="a-card-label">HULL VALIDATION</p>
+                  <p>
+                    {result.hull_validation
+                      ? (result.hull_validation.is_hull === true
+                          ? "Hull surface validated"
+                          : result.hull_validation.is_hull === false
+                            ? "Hull surface not validated"
+                            : "Validation status unavailable")
+                      : "Validation status unavailable"}
+                  </p>
+                </div>
+
+                {/* Severity */}
+                <div className="a-card" style={{ padding: 16 }}>
+                  <p className="a-card-label">SEVERITY ASSESSMENT</p>
+                  <h3 style={{ color: "#67d9f5", marginTop: 8 }}>
+                    {result.severity?.level || "Not assessed"}
+                  </h3>
+                  <p>{result.severity?.reason || "Preliminary assessment based on the detected hull condition."}</p>
+                </div>
+
+                {/* Maintenance Priority */}
+                <div className="a-card" style={{ padding: 16 }}>
+                  <p className="a-card-label">MAINTENANCE GUIDANCE</p>
+                  <p>
+                    {result.severity?.recommended_action ||
+                      result.recommendation ||
+                      "Qualified inspection recommended."}
+                  </p>
+                </div>
+
+                {/* System Warnings */}
+                <div
+                  className="a-card"
+                  style={{
+                    padding: 16,
+                    border: "1px solid #95682e"
+                  }}
+                >
+                  <p style={{ color: "#ffc078", fontWeight: 700 }}>
+                    SYSTEM WARNINGS
+                  </p>
+                  <p>
+                    {result.warning ||
+                      result.severity?.notice ||
+                      "AI-generated findings are preliminary. Confirm the defect and maintenance decision through qualified inspection."}
+                  </p>
+                </div>
+              </div>
+            )}
             {/* GRAD-CAM */}
             {result.gradcam && (
               <div className="gradcam-block">
@@ -760,7 +2696,7 @@ function AppContent() {
                     </p>
 
                     <img
-                      src={`data:image/jpeg;base64,${result.gradcam}`}
+                      src={result.gradcam}
                       alt="Grad-CAM"
                     />
 
@@ -874,9 +2810,13 @@ function AppContent() {
               DOWNLOAD SEA-STATE PDF REPORT
             </button>
 
-            <div className="sea-history-section">
-              <div className="sea-history-header">
-                <p className="sea-feature-title">SEA-STATE PREDICTION HISTORY</p>
+            <details className="sea-history-section sea-history-details">
+              <summary>
+                <span className="sea-feature-title">SEA-STATE PREDICTION HISTORY</span>
+                <span className="sea-history-count">{seaHistory.length} RECORDS · OPEN</span>
+              </summary>
+              <div className="sea-history-header sea-history-header--controls">
+                <p className="sea-support-text">Recent operational classifications are kept here so the live result remains the primary focus.</p>
                 <div className="sea-history-actions">
                   <button onClick={fetchSeaHistory} disabled={seaHistoryLoading}>
                     {seaHistoryLoading ? "LOADING…" : "REFRESH"}
@@ -898,51 +2838,36 @@ function AppContent() {
                   ))}
                 </div>
               )}
-            </div>
+            </details>
           </div>
         )}
 
+        {/* Show Vessel Detection results when the boat module is active. */}
         {/* ══════════════════════════
             BOAT DETECTION results
             ══════════════════════════ */}
-        {activeModule === "boat" && (
-          <div className="result-body">
-            {result.results && result.results.length > 0 ? (
-              <>
-                <div className="result-primary-row">
-                  <div className="result-pred-block" style={{ borderColor: mod.colorMid }}>
-                    <p className="rpb-eye">VESSELS DETECTED</p>
-                    <p className="rpb-val" style={{ color: mod.color }}>{result.count}</p>
-                    <p className="rpb-sub">Objects identified in frame</p>
-                  </div>
-                  <div className="vessel-count-badge"
-                    style={{ color: mod.color, borderColor: mod.colorMid, background: mod.colorDim }}>
-                    <Ship size={26} strokeWidth={1.5} />
-                    <span>{result.count} FOUND</span>
-                  </div>
-                </div>
-
-                <div className="vessel-list">
-                  {result.results.map((det, i) => (
-                    <div key={i} className="vessel-item" style={{ borderColor: mod.colorMid }}>
-                      <div className="vessel-index"
-                        style={{ background: mod.colorDim, color: mod.color }}>
-                        <Crosshair size={12} /> {i + 1}
-                      </div>
-                      <span className="vessel-label">{det.label}</span>
-                      <span className="vessel-conf" style={{ color: mod.color }}>{det.confidence}%</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="empty-result">
-                <Ship size={38} opacity={0.2} />
-                <p>No vessels detected in this frame.</p>
-              </div>
-            )}
-          </div>
-        )}
+        <VesselDetectionResults
+          activeModule={activeModule}
+          result={result}
+          mod={mod}
+          vesselVideoFile={vesselVideoFile}
+          vesselInfoPreview={vesselInfoPreview}
+          cleanVesselDetections={cleanVesselDetections}
+          preview={preview}
+          downloadBoatAnalysis={downloadBoatAnalysis}
+          vesselDraft={vesselDraft}
+          setVesselDraft={setVesselDraft}
+          setVesselDraftDirty={setVesselDraftDirty}
+          shipAnalysisDone={shipAnalysisDone}
+          vesselInfoAnalysisDone={vesselInfoAnalysisDone}
+          vesselRecordId={vesselRecordId}
+          vesselDraftDirty={vesselDraftDirty}
+          loading={loading}
+          canWrite={canWrite}
+          saveVesselRecordEdits={saveVesselRecordEdits}
+          submitVesselRecord={submitVesselRecord}
+          DataRow={DataRow}
+        />
 
         {/* ══════════════════════════
             RADAR results
@@ -950,31 +2875,160 @@ function AppContent() {
         {activeModule === "radar" && (
           <div className="result-body">
 
-            {/* Final fused prediction — the most prominent element */}
-            <div className="radar-final-card"
-              style={{ borderColor: mod.colorMid, background: mod.colorDim }}>
-              <p className="rfc-eye">FINAL FUSED DECISION</p>
-              <p className="rfc-val" style={{ color: mod.color }}>{result.final_prediction}</p>
-              <p className="rfc-status">{result.decision_status}</p>
+            <div
+              className="radar-final-card"
+              style={{
+                borderColor: mod.colorMid,
+                background: mod.colorDim,
+              }}
+            >
+              <p className="rfc-eye">
+                FINAL RADAR DECISION
+              </p>
+
+              <p
+                className="rfc-val"
+                style={{ color: mod.color }}
+              >
+                {result.final_prediction}
+              </p>
+
+              <p className="rfc-status">
+                {result.decision_status}
+              </p>
+
+              <p className="rfc-status">
+                Model confidence:{" "}
+                {Number(
+                  result.confidence ?? 0
+                ).toFixed(2)}
+                %
+              </p>
+
+              <p className="rfc-status">
+                Validation accuracy:{" "}
+                {Number(
+                  result.validation_accuracy ?? 0
+                ).toFixed(2)}
+                %
+              </p>
+
+              <p className="rfc-status">
+                Held-out test accuracy:{" "}
+                {Number(
+                  result.model_accuracy ?? 0
+                ).toFixed(2)}
+                %
+              </p>
+
+              <p className="rfc-status">
+                Macro F1:{" "}
+                {Number(
+                  result.macro_f1 ?? 0
+                ).toFixed(4)}
+              </p>
             </div>
 
-            {/* YOLO vs CNN model breakdown side by side */}
             <div className="radar-model-row">
-              <div className="radar-model-card" style={{ borderColor: "#00d4ff44" }}>
-                <p className="rmc-label" style={{ color: "#00d4ff" }}>
-                  <Zap size={11} /> YOLO MODEL
+
+              <div
+                className="radar-model-card"
+                style={{
+                  borderColor: "#00d4ff44",
+                }}
+              >
+                <p
+                  className="rmc-label"
+                  style={{
+                    color: "#00d4ff",
+                  }}
+                >
+                  BIRD PROBABILITY
                 </p>
-                <p className="rmc-pred">{result.yolo_prediction}</p>
-                <p className="rmc-conf" style={{ color: "#00d4ff" }}>{result.yolo_confidence}%</p>
-              </div>
-              <div className="radar-model-card" style={{ borderColor: "#00ffb344" }}>
-                <p className="rmc-label" style={{ color: "#00ffb3" }}>
-                  <Network size={11} /> CNN VERIFY
+
+                <p className="rmc-pred">
+                  BIRD
                 </p>
-                <p className="rmc-pred">{result.cnn_prediction}</p>
-                <p className="rmc-conf" style={{ color: "#00ffb3" }}>{result.cnn_confidence}%</p>
+
+                <p
+                  className="rmc-conf"
+                  style={{
+                    color: "#00d4ff",
+                  }}
+                >
+                  {Number(
+                    result.bird_probability
+                    ?? 0
+                  ).toFixed(2)}
+                  %
+                </p>
               </div>
+
+              <div
+                className="radar-model-card"
+                style={{
+                  borderColor: "#00ffb344",
+                }}
+              >
+                <p
+                  className="rmc-label"
+                  style={{
+                    color: "#00ffb3",
+                  }}
+                >
+                  SHIP PROBABILITY
+                </p>
+
+                <p className="rmc-pred">
+                  SHIP
+                </p>
+
+                <p
+                  className="rmc-conf"
+                  style={{
+                    color: "#00ffb3",
+                  }}
+                >
+                  {Number(
+                    result.ship_probability
+                    ?? 0
+                  ).toFixed(2)}
+                  %
+                </p>
+              </div>
+              <div
+                className="radar-model-card"
+                style={{
+                  borderColor: "#ffb34744",
+                }}
+              >
+                <p
+                  className="rmc-label"
+                  style={{
+                    color: "#ffb347",
+                  }}
+                >
+                  UNKNOWN PROBABILITY
+                </p>
+                <p className="rmc-pred">
+                  UNKNOWN
+                </p>
+                <p
+                  className="rmc-conf"
+                  style={{
+                    color: "#ffb347",
+                  }}
+                >
+                  {Number(
+                    result.unknown_probability
+                    ?? 0
+                  ).toFixed(2)}
+                  %
+                </p>
+              </div>
+
             </div>
+
           </div>
         )}
         </div>
@@ -987,6 +3041,17 @@ function AppContent() {
      FULL APPLICATION RENDER
      Layout: sidebar (fixed left) + main content (scrollable)
      ════════════════════════════════════════════════════════ */
+  const vesselHistoryPageCount = Math.max(
+    1,
+    Math.ceil(vesselHistory.length / VESSEL_HISTORY_PAGE_SIZE),
+  );
+  const currentVesselHistoryPage = Math.min(vesselHistoryPage, vesselHistoryPageCount);
+  const vesselHistoryStartIndex = (currentVesselHistoryPage - 1) * VESSEL_HISTORY_PAGE_SIZE;
+  const currentVesselHistoryRecords = vesselHistory.slice(
+    vesselHistoryStartIndex,
+    vesselHistoryStartIndex + VESSEL_HISTORY_PAGE_SIZE,
+  );
+
   return (
     <div className="app-shell">
 
@@ -1010,55 +3075,55 @@ function AppContent() {
 
         {/* OceanIQ brand mark */}
         <div className="sidebar-brand">
-          <div className="sb-logo">
-            <Anchor size={19} strokeWidth={2.5} />
+          <div className="sb-logo" aria-hidden="true">
+            <Anchor size={22} strokeWidth={2.5} />
           </div>
           <div>
             <p className="sb-name">OceanIQ</p>
-            <p className="sb-tagline">Marine Intelligence</p>
+            <p className="sb-tagline">Marine intelligence</p>
           </div>
         </div>
 
-        {/* Research project identifier */}
-        <div className="sidebar-proj-tag">
-          <Globe size={10} />
+        <div className="sidebar-proj-tag" aria-label="Research group">
+          <Globe size={12} aria-hidden="true" />
           R26-IT-003
         </div>
 
-        {/* Module navigation — clicking switches the active AI module */}
-        <p className="sidebar-sec-label">AI MODULES</p>
+        <p className="sidebar-sec-label">Workspace</p>
         <nav className="module-nav">
           {Object.values(MODULES).map((m) => {
             const Icon = m.icon;
             const active = activeModule === m.id;
+            const itemColor = theme === "light" ? (m.lightColor || m.color) : m.color;
+            const itemColorDim = `${itemColor}18`;
             return (
               <button key={m.id}
                 className={`mnb ${active ? "mnb--active" : ""}`}
-                style={active ? { "--mc": m.color, "--mc-dim": m.colorDim } : {}}
+                style={active ? { "--mc": itemColor, "--mc-dim": itemColorDim } : {}}
                 onClick={() => switchModule(m.id)}
               >
-                {active && <span className="mnb-accent" style={{ background: m.color }} />}
+                {active && <span className="mnb-accent" style={{ background: itemColor }} />}
 
                 <div className="mnb-icon"
                   style={{
-                    color: active ? m.color : "rgba(255,255,255,0.3)",
-                    background: active ? m.colorDim : "transparent",
+                    color: active ? itemColor : "var(--text-300)",
+                    background: active ? itemColorDim : "transparent",
                   }}>
                   <Icon size={16} strokeWidth={1.8} />
                 </div>
 
                 <div className="mnb-text">
                   <span className="mnb-name"
-                    style={{ color: active ? "#fff" : "rgba(255,255,255,0.5)" }}>
+                    style={{ color: active ? "var(--text-100)" : "var(--text-200)" }}>
                     {m.label}
                   </span>
                   <span className="mnb-tag"
-                    style={{ color: active ? m.color : "rgba(255,255,255,0.2)" }}>
+                    style={{ color: active ? itemColor : "var(--text-400)" }}>
                     {m.tag}
                   </span>
                 </div>
 
-                {active && <ChevronRight size={13} style={{ color: m.color, marginLeft: "auto", flexShrink: 0 }} />}
+                {active && <ChevronRight size={13} style={{ color: itemColor, marginLeft: "auto", flexShrink: 0 }} />}
               </button>
             );
           })}
@@ -1066,16 +3131,14 @@ function AppContent() {
 
         <div style={{ flex: 1 }} />
 
-        {/* System health status indicators */}
         <div className="sidebar-status-block">
-          <p className="sidebar-sec-label">SYSTEM STATUS</p>
+          <p className="sidebar-sec-label">Account status</p>
           <StatusRows />
         </div>
 
-        {/* Live clock + version info */}
         <div className="sidebar-footer">
           <SystemClock />
-          <span className="sidebar-ver">v2.0 · R26-IT-003</span>
+          <span className="sidebar-ver">R26-IT-003</span>
         </div>
       </aside>
 
@@ -1103,15 +3166,94 @@ function AppContent() {
           </div>
 
           <div className="cb-badges">
-            <div className="badge-live"><span className="live-dot" />LIVE</div>
-            <div className="badge-secure"><Shield size={12} />SECURE</div>
+            
+          {activeModule === "radar" && (
+            <button
+              type="button"
+              className="module-report-btn"
+              onClick={async () => {
+                try {
+                  await generateRadarReport();
+                } catch (error) {
+                  console.error(
+                    "Radar report generation failed:",
+                    error
+                  );
+
+                  alert(
+                    error?.message ||
+                    "Unable to generate Radar report."
+                  );
+                }
+              }}
+            >
+              <Download size={14} />
+              Download radar report
+            </button>
+          )}
+
+          {activeModule === "simulation" && (
+            <button
+              type="button"
+              className="module-report-btn"
+              onClick={async () => {
+                try {
+                  await generateSimulationReport();
+                } catch (error) {
+                  console.error(
+                    "Simulation report generation failed:",
+                    error
+                  );
+
+                  alert(
+                    error?.message ||
+                    "Unable to generate Live Simulation report."
+                  );
+                }
+              }}
+            >
+              <Download size={14} aria-hidden="true" />
+              Download simulation report
+            </button>
+          )}
+
+          {activeModule === "database" && (
+            <button
+              type="button"
+              className="module-report-btn"
+              onClick={async () => {
+                try {
+                  await generateDatabaseReport();
+                } catch (error) {
+                  console.error(
+                    "Database report generation failed:",
+                    error
+                  );
+
+                  alert(
+                    error?.message ||
+                    "Unable to generate Database report."
+                  );
+                }
+              }}
+            >
+              <Download size={14} aria-hidden="true" />
+              Download database report
+            </button>
+          )}
+
+<ThemeToggle compact />
+            <div className="badge-live" title="Authenticated application session">
+              <span className="live-dot" aria-hidden="true" />
+              Signed in
+            </div>
             <div className={`badge-access ${canWrite ? "badge-access--write" : "badge-access--read"}`}>
-              <LockKeyhole size={12} />
-              {isAdmin ? "ADMIN" : accessLevel === "read_write" ? "READ / WRITE" : "READ ONLY"}
+              <LockKeyhole size={12} aria-hidden="true" />
+              {isAdmin ? "Admin" : accessLevel === "read_write" ? "Read / write" : "Read only"}
             </div>
             {isAdmin && (
-              <button className="admin-access-btn" onClick={() => setShowAccessAdmin(true)}>
-                <UserRoundCog size={13} /> ACCESS ADMIN
+              <button type="button" className="admin-access-btn" onClick={() => setShowAccessAdmin(true)}>
+                <UserRoundCog size={13} aria-hidden="true" /> Access admin
               </button>
             )}
             <span className="cb-user">{user?.username}</span>
@@ -1119,13 +3261,14 @@ function AppContent() {
           </div>
         </header>
 
-        {/* Module description strip — shows what the selected model does */}
-        <div className="desc-strip" style={{ borderColor: mod.colorMid }}>
-          <Cpu size={13} style={{ color: mod.color, flexShrink: 0, marginTop: 1 }} />
-          <p>{mod.description}</p>
-        </div>
+        {activeModule !== "home" && (
+          <div className="desc-strip">
+            <Cpu size={14} style={{ color: mod.color, flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+            <p>{mod.description}</p>
+          </div>
+        )}
 
-        {!canWrite && (
+        {!canWrite && activeModule !== "home" && (
           <div className="readonly-banner">
             <LockKeyhole size={14} />
             <div>
@@ -1135,10 +3278,16 @@ function AppContent() {
           </div>
         )}
 
-        {activeModule === "simulation" ? (
+        {activeModule === "home" ? (
+          <HomePage onNavigate={switchModule} />
+        ) : activeModule === "database" ? (
+          <DatabaseViewer />
+        ) : activeModule === "simulation" ? (
           <div className={!canWrite ? "simulation-readonly" : ""}>
-            <LiveSimulation />
+            <LiveSimulation mediaFit={mediaFit} onMediaFitChange={setMediaFit} />
           </div>
+        ) : activeModule === "chat" ? (
+          <ChatAssistant />
         ) : (
           <>
         {/* ── 3-panel analysis grid ── */}
@@ -1147,21 +3296,34 @@ function AppContent() {
           {/* ─── PANEL 1: Upload ─── */}
           <section className="a-card upload-card">
             <div className="a-card-header">
-              <span className="a-card-label"><Upload size={11} /> INPUT IMAGE</span>
+              <span className="a-card-label"><Upload size={11} /> {activeModule === "boat" ? "VESSEL IMAGE OR VIDEO" : "INPUT IMAGE"}</span>
               <span className="a-card-tag" style={{ color: mod.color }}>{mod.statusLabel}</span>
             </div>
 
             {/* Drag-and-drop zone */}
             <label
-              className={`drop-zone ${dragOver ? "dz--over" : ""} ${file ? "dz--filled" : ""} ${!canWrite ? "dz--readonly" : ""}`}
+              className={`drop-zone ${dragOver ? "dz--over" : ""} ${(file || vesselVideoFile) ? "dz--filled" : ""} ${!canWrite ? "dz--readonly" : ""}`}
               style={dragOver ? { borderColor: mod.color } : {}}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
             >
-              <input type="file" accept="image/*" onChange={handleFileChange} disabled={!canWrite} />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={activeModule === "boat" ? "image/*,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm" : "image/*"}
+                onClick={(e) => { e.currentTarget.value = ""; }}
+                onChange={handleFileChange}
+                disabled={!canWrite}
+              />
 
-              {file ? (
+              {vesselVideoFile ? (
+                <div className="dz-loaded">
+                  <Film size={24} style={{ color: mod.color }} />
+                  <p className="dz-fname">{vesselVideoFile.name}</p>
+                  <p className="dz-change">Video is analyzed temporarily and is never saved to the database</p>
+                </div>
+              ) : file ? (
                 <div className="dz-loaded">
                   <CheckCircle2 size={24} style={{ color: mod.color }} />
                   <p className="dz-fname">{file.name}</p>
@@ -1172,13 +3334,33 @@ function AppContent() {
                   <div className="dz-upload-icon">
                     <Upload size={24} style={{ color: mod.color }} />
                   </div>
-                  <p className="dz-main">Drop image here</p>
+                  <p className="dz-main">Drop {activeModule === "boat" ? "vessel image or video" : "image"} here</p>
                   <p className="dz-sub">or click to browse</p>
-                  <p className="dz-fmt">PNG · JPG · JPEG · BMP</p>
+                  <p className="dz-fmt">{activeModule === "boat" ? "IMAGE · MP4 · MOV · AVI · MKV · WEBM · MAX 100 MB / 5 MIN" : "PNG · JPG · JPEG · BMP · WEBP"}</p>
                 </div>
               )}
             </label>
-
+            {activeModule === "boat" && (
+              <VesselDetectionPage
+                color={mod.color}
+                file={file}
+                vesselVideoFile={vesselVideoFile}
+                loading={loading}
+                canWrite={canWrite}
+                shipAnalysisDone={shipAnalysisDone}
+                videoAnalysisDone={videoAnalysisDone}
+                vesselInfoFile={vesselInfoFile}
+                vesselInfoPreview={vesselInfoPreview}
+                vesselInfoAnalysisDone={vesselInfoAnalysisDone}
+                onAnalyzeVessel={() => runVesselAnalysis("ship")}
+                onAnalyzeVideo={() => runVesselAnalysis("video")}
+                onAnalyzeInfo={() => runVesselAnalysis("info")}
+                onInfoFileChange={handleVesselInfoFileChange}
+                onRemoveImage={clearVesselImage}
+                onRemoveVideo={clearVesselVideo}
+                onRemoveInfoImage={clearVesselInfoImage}
+              />
+            )}
             {activeModule === "sea" && (
               <label className="sea-enhancement-toggle">
                 <input
@@ -1191,7 +3373,7 @@ function AppContent() {
               </label>
             )}
 
-            <button
+            {activeModule !== "boat" && <button
               className="run-btn"
               style={{ "--mc": mod.color, "--mc-dim": mod.colorDim }}
               onClick={runPrediction}
@@ -1200,7 +3382,7 @@ function AppContent() {
               {loading
                 ? <><Loader size={15} className="spin" /> ANALYZING…</>
                 : <><Zap size={15} /> RUN ANALYSIS</>}
-            </button>
+            </button>}
           </section>
 
           {/* ─── PANEL 2: Preview ─── */}
@@ -1214,10 +3396,45 @@ function AppContent() {
               )}
             </div>
 
+            <div className="preview-toolbar">
+              <MediaFitToggle mode={mediaFit} onChange={setMediaFit} />
+              {file && canWrite && (
+                <button
+                  type="button"
+                  className="change-image-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload size={12} /> CHANGE IMAGE
+                </button>
+              )}
+            </div>
+
             <div className="preview-area">
-              {preview ? (
+              {activeModule === "boat" && vesselVideoPreview ? (
+                <video
+                  src={vesselVideoPreview}
+                  className={`preview-img preview-img--${mediaFit}`}
+                  controls
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
+              ) : preview ? (
                 <div className="preview-img-wrap">
-                  <img src={preview} alt="Preview" className="preview-img" />
+                  <img
+                    src={preview}
+                    alt="Preview"
+                    className={`preview-img preview-img--${mediaFit}`}
+                  />
+
+                  {activeModule === "boat" && !loading && (
+                    <BoatDetectionOverlay
+                      result={result}
+                      color={mod.color}
+                      mediaFit={mediaFit}
+                      detections={cleanVesselDetections}
+                    />
+                  )}
                   {/* Scan-line overlay shown while model is running */}
                   {loading && (
                     <div className="scan-overlay">
@@ -1244,7 +3461,7 @@ function AppContent() {
           </section>
 
           {/* ─── PANEL 3: Results ─── */}
-          <section className="a-card results-card">
+          <section ref={resultsCardRef} className="a-card results-card">
             <div className="a-card-header">
               <span className="a-card-label"><Activity size={11} /> INTELLIGENCE REPORT</span>
               <span className="a-card-tag" style={{ color: mod.color }}>
@@ -1277,9 +3494,66 @@ function AppContent() {
 
             {/* Actual prediction results */}
             {renderResults()}
+
+            {/* Hull PDF Download */}
+            {activeModule === "hull" && result && !result.__error && (
+              <button
+                type="button"
+                className="module-report-btn"
+                onClick={generateHullPDF}
+                style={{ marginTop: "16px", width: "100%" }}
+              >
+                DOWNLOAD HULL PDF REPORT
+              </button>
+            )}
           </section>
         </div>
+        {/* Show saved Vessel Detection records in the shared dashboard. */}
+        <VesselDetectionHistory
+          activeModule={activeModule}
+          vesselHistoryStorage={vesselHistoryStorage}
+          fetchVesselHistory={fetchVesselHistory}
+          vesselHistoryLoading={vesselHistoryLoading}
+          vesselHistoryError={vesselHistoryError}
+          vesselHistory={vesselHistory}
+          canWrite={canWrite}
+          startEditingVesselRecord={startEditingVesselRecord}
+          deleteVesselHistoryRecord={deleteVesselHistoryRecord}
+          currentVesselHistoryRecords={currentVesselHistoryRecords}
+          vesselHistoryStartIndex={vesselHistoryStartIndex}
+          editingVesselRecordId={editingVesselRecordId}
+          editingVesselDraft={editingVesselDraft}
+          setEditingVesselDraft={setEditingVesselDraft}
+          saveEditedVesselHistoryRecord={saveEditedVesselHistoryRecord}
+          setEditingVesselRecordId={setEditingVesselRecordId}
+          vesselHistoryPageCount={vesselHistoryPageCount}
+          setVesselHistoryPage={setVesselHistoryPage}
+          currentVesselHistoryPage={currentVesselHistoryPage}
+          setExpandedHistoryImage={setExpandedHistoryImage}
+        />
           </>
+        )}
+
+        <VesselImageLightbox
+          image={expandedHistoryImage}
+          onClose={() => setExpandedHistoryImage(null)}
+        />
+
+        {activeModule !== "home" && activeModule !== "simulation" && activeModule !== "chat" && activeModule !== "database" && activeModule !== "boat" && file && canWrite && (
+          <div className="mobile-action-dock">
+            <button type="button" className="mobile-change-btn" onClick={() => fileInputRef.current?.click()}>
+              <Upload size={14} /> CHANGE
+            </button>
+            <button
+              type="button"
+              className="mobile-run-btn"
+              style={{ "--mc": mod.color }}
+              onClick={runPrediction}
+              disabled={loading}
+            >
+              {loading ? <><Loader size={14} className="spin" /> ANALYZING…</> : <><Zap size={14} /> {result ? "RE-RUN" : "RUN ANALYSIS"}</>}
+            </button>
+          </div>
         )}
 
         {/* Footer strip */}
@@ -1303,3 +3577,4 @@ function App() {
 }
 
 export default App;
+
